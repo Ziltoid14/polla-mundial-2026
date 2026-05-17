@@ -332,11 +332,14 @@ const CSS = `
     .header-btns  { gap:6px !important; }
     .header-btns .btn { font-size:11px !important; padding:6px 10px !important; }
 
+    /* Group header title — no wrap */
+    .group-title { font-size:20px !important; letter-spacing:2px !important; white-space:nowrap; }
+
     /* Group team pills — hide on mobile */
-    .group-team-pills { display:none; }
+    .group-team-pills { display:none !important; }
 
     /* Column headers — hide on mobile */
-    .match-col-headers { display:none; }
+    .match-col-headers { display:none !important; }
 
     /* Match row — 2-row grid layout */
     .match-row {
@@ -349,15 +352,19 @@ const CSS = `
       padding: 10px 12px !important;
     }
     .match-row > *:nth-child(1) { grid-area: date; align-self:center; }
-    .match-row > *:nth-child(2) { grid-area: home; }
+    .match-row > *:nth-child(2) { grid-area: home; min-width:0; }
     .match-row > *:nth-child(3) { grid-area: pred; justify-content:center; }
-    .match-row > *:nth-child(4) { grid-area: away; flex-direction:row-reverse !important; justify-content:flex-start !important; }
+    .match-row > *:nth-child(4) { grid-area: away; flex-direction:row-reverse !important; justify-content:flex-start !important; min-width:0; }
     .match-row > *:nth-child(5) { grid-area: result; justify-content:center; }
     .match-row > *:nth-child(6) { grid-area: pts; justify-content:flex-end; align-self:center; }
 
+    /* Team names truncate on mobile */
+    .match-row > *:nth-child(2) span,
+    .match-row > *:nth-child(4) span { font-size:12px !important; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
     /* Smaller flags and inputs on mobile */
-    .flag-bubble { width:28px; height:28px; font-size:16px; }
-    .score-inp   { width:34px; height:34px; font-size:15px; }
+    .flag-bubble { width:26px !important; height:26px !important; font-size:15px !important; flex-shrink:0; }
+    .score-inp   { width:32px !important; height:32px !important; font-size:14px !important; }
 
     /* Leaderboard — show only rank, name, total */
     .lb-card { grid-template-columns: 36px 1fr 64px !important; }
@@ -367,6 +374,10 @@ const CSS = `
 
     /* La llave standings */
     .st-row { padding:5px 10px; gap:2px; }
+
+    /* Section headers — stack vertically */
+    .section-header { flex-direction:column !important; align-items:flex-start !important; gap:4px !important; }
+    .section-header span { font-size:11px !important; }
   }
 `;
 
@@ -691,7 +702,7 @@ export default function App() {
             <div className="glass" style={{ borderRadius: 14, overflow: "hidden" }}>
               <div style={{ padding: "14px 20px", background: "rgba(37,99,235,0.1)", borderBottom: "1px solid rgba(148,163,184,0.1)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                  <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 24, fontWeight: 700, letterSpacing: 3 }}>GRUPO {grp}</span>
+                  <span className="group-title" style={{ fontFamily: "'Oswald',sans-serif", fontSize: 24, fontWeight: 700, letterSpacing: 3 }}>GRUPO {grp}</span>
                   <div className="group-team-pills" style={{ display: "flex", gap: 6 }}>
                     {GD[grp].map(t => (
                       <div key={t} style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 20, background: "rgba(148,163,184,0.07)", border: "1px solid rgba(148,163,184,0.1)" }}>
@@ -714,7 +725,8 @@ export default function App() {
               </div>
 
               {MATCHES[grp].map((m, i) => {
-                const locked = isLocked(m.date) || (!authed.has(person) && !adminMode);
+                const dateLocked = isLocked(m.date);
+                const locked = dateLocked || (!authed.has(person) && !adminMode);
                 const pred = data.predictions[person]?.[m.id] || { h: "", a: "" };
                 const res = data.results[m.id];
                 const p = getPts(pred, res);
@@ -724,8 +736,8 @@ export default function App() {
                 return (
                   <div key={m.id} className={rowCls} style={{ animationDelay: `${i * 45}ms` }}>
                     <div>
-                      <div style={{ fontSize: 12, color: locked ? "var(--gold)" : "var(--silver)", fontWeight: 500 }}>{fmtDate(m.date)}</div>
-                      {locked && <div style={{ fontSize: 9, color: "var(--silver)", marginTop: 1, letterSpacing: 0.5 }}>🔒 CERRADO</div>}
+                      <div style={{ fontSize: 12, color: dateLocked ? "var(--gold)" : "var(--silver)", fontWeight: 500 }}>{fmtDate(m.date)}</div>
+                      {dateLocked && <div style={{ fontSize: 9, color: "var(--silver)", marginTop: 1, letterSpacing: 0.5 }}>🔒 CERRADO</div>}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <div className={`flag-bubble${hasRes && res.h > res.a ? " active" : ""}`}>{FL[m.home] || "🏳️"}</div>
@@ -797,7 +809,7 @@ export default function App() {
         {/* ════ CLASIFICACIÓN ════ */}
         {tab === "clasificacion" && (
           <div>
-            <div style={{ marginBottom: 20, display: "flex", alignItems: "baseline", gap: 12 }}>
+            <div className="section-header" style={{ marginBottom: 20, display: "flex", alignItems: "baseline", gap: 12 }}>
               <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 30, fontWeight: 700, letterSpacing: 3 }}>CLASIFICACIÓN</h2>
               <span style={{ fontSize: 13, color: "var(--silver)" }}>fase de grupos · {totalRes}/72 resultados registrados</span>
             </div>
