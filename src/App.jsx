@@ -327,7 +327,7 @@ const CSS = `
 
 /* ═══════════════════════ APP ═══════════════════════ */
 const DOC_REF = doc(db, "polla2026", "data");
-const EMPTY   = { participants: [], predictions: {}, results: {} };
+const EMPTY   = { participants: [], predictions: {}, results: {}, passwords: {} };
 
 export default function App() {
   const [data,   setData]   = useState(EMPTY);
@@ -341,9 +341,16 @@ export default function App() {
   const [loginVal,   setLVal]  = useState("");
   const [loginErr,   setLErr]  = useState(false);
   const [newName,    setNName] = useState("");
+  const [newPass,    setNPass] = useState("");
   const [nameErr,    setNErr]  = useState("");
   const [fetching,   setFetch] = useState(false);
   const [fetchMsg,   setFMsg]  = useState("");
+  // session-only auth: which participants have entered their password this session
+  const [authed,     setAuthed] = useState(new Set());
+  const [showPartLogin,  setPartLogin]  = useState(false);
+  const [partLoginTarget, setPartTarget] = useState("");
+  const [partLoginVal,   setPLVal]  = useState("");
+  const [partLoginErr,   setPLErr]  = useState(false);
 
   /* Firestore real-time sync */
   useEffect(() => {
@@ -369,17 +376,45 @@ export default function App() {
   /* Handlers */
   const addParticipant = () => {
     const n = newName.trim();
+    const pw = newPass.trim();
     if (!n) return;
+    if (!pw) { setNErr("La contraseña no puede estar vacía"); return; }
     if (data.participants.includes(n)) { setNErr("Ese nombre ya existe"); return; }
     if (data.participants.length >= 8) { setNErr("Máximo 8 participantes"); return; }
-    persist(s => ({ ...s, participants: [...s.participants, n] }));
+    persist(s => ({ ...s, participants: [...s.participants, n], passwords: { ...(s.passwords || {}), [n]: pw } }));
+    setAuthed(prev => new Set(prev).add(n));
     if (!person) setPerson(n);
-    setNName(""); setNErr("");
+    setNName(""); setNPass(""); setNErr("");
   };
 
   const removePart = (name) => {
-    persist(s => { const p = { ...s.predictions }; delete p[name]; return { ...s, participants: s.participants.filter(x => x !== name), predictions: p }; });
+    persist(s => {
+      const p = { ...s.predictions }; delete p[name];
+      const pw = { ...(s.passwords || {}) }; delete pw[name];
+      return { ...s, participants: s.participants.filter(x => x !== name), predictions: p, passwords: pw };
+    });
     if (person === name) setPerson(data.participants.find(x => x !== name) || "");
+  };
+
+  const selectPerson = (name) => {
+    if (authed.has(name) || adminMode) {
+      setPerson(name);
+    } else {
+      setPartTarget(name);
+      setPLVal(""); setPLErr(false);
+      setPartLogin(true);
+    }
+  };
+
+  const submitPartLogin = () => {
+    const stored = (data.passwords || {})[partLoginTarget];
+    if (partLoginVal === stored) {
+      setAuthed(prev => new Set(prev).add(partLoginTarget));
+      setPerson(partLoginTarget);
+      setPartLogin(false); setPLVal("");
+    } else {
+      setPLErr(true);
+    }
   };
 
   const setPred = (matchId, side, val) => {
@@ -491,6 +526,28 @@ export default function App() {
         </div>
       )}
 
+      {/* ══ PARTICIPANT LOGIN MODAL ══ */}
+      {showPartLogin && (
+        <div className="modal" onClick={e => e.target === e.currentTarget && setPartLogin(false)}>
+          <div className="glass" style={{ borderRadius: 16, padding: 32, width: 340 }}>
+            <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 24, fontWeight: 600, letterSpacing: 2, marginBottom: 6 }}>ACCESO</div>
+            <div style={{ fontSize: 13, color: "var(--silver)", marginBottom: 20 }}>
+              Ingresa tu contraseña para editar las predicciones de <strong style={{ color: "var(--white)" }}>{partLoginTarget}</strong>.
+            </div>
+            <input type="password" placeholder="Contraseña..." value={partLoginVal} autoFocus
+              onChange={e => { setPLVal(e.target.value); setPLErr(false); }}
+              onKeyDown={e => e.key === "Enter" && submitPartLogin()}
+              style={{ width: "100%", padding: "11px 14px", background: "rgba(6,14,38,0.8)", border: `1.5px solid ${partLoginErr ? "var(--rose)" : "rgba(148,163,184,0.2)"}`, borderRadius: 10, color: "var(--white)", fontSize: 15, outline: "none", marginBottom: 8, fontFamily: "'DM Sans',sans-serif" }}
+            />
+            {partLoginErr && <p style={{ fontSize: 12, color: "var(--rose)", marginBottom: 10 }}>Contraseña incorrecta.</p>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn btn-primary" style={{ flex: 1, padding: "11px 0" }} onClick={submitPartLogin}>Entrar</button>
+              <button className="btn btn-ghost" onClick={() => { setPartLogin(false); setPLVal(""); setPLErr(false); }}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══ TABS ══ */}
       <div style={{ background: "rgba(6,14,38,0.7)", backdropFilter: "blur(10px)", borderBottom: "1px solid rgba(148,163,184,0.08)", overflowX: "auto" }}>
         <div style={{ maxWidth: 1080, margin: "0 auto", display: "flex", padding: "0 12px" }}>
@@ -516,7 +573,9 @@ export default function App() {
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: person ? 10 : 0 }}>
                 {!data.participants.length && <span style={{ fontSize: 14, color: "var(--silver)" }}>Agrega participantes en la pestaña 👥 primero</span>}
                 {data.participants.map(p => (
-                  <button key={p} className={`part-chip${person === p ? " active" : ""}`} onClick={() => setPerson(p)}>{p}</button>
+                  <button key={p} className={`part-chip${person === p ? " active" : ""}`} onClick={() => selectPerson(p)}>
+                    {p} {!authed.has(p) && !adminMode && <span style={{ fontSize: 11, opacity: 0.6 }}>🔒</span>}
+                  </button>
                 ))}
               </div>
               {person && (
@@ -569,7 +628,7 @@ export default function App() {
               </div>
 
               {MATCHES[grp].map((m, i) => {
-                const locked = isLocked(m.date);
+                const locked = isLocked(m.date) || (!authed.has(person) && !adminMode);
                 const pred = data.predictions[person]?.[m.id] || { h: "", a: "" };
                 const res = data.results[m.id];
                 const p = getPts(pred, res);
@@ -753,11 +812,16 @@ export default function App() {
             <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 30, fontWeight: 700, letterSpacing: 3, marginBottom: 20 }}>PARTICIPANTES</h2>
             <div className="glass" style={{ borderRadius: 14, padding: "18px 20px", marginBottom: 16 }}>
               <p style={{ fontSize: 11, color: "var(--silver)", letterSpacing: 1.5, marginBottom: 10, fontWeight: 500 }}>AGREGAR PARTICIPANTE</p>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                 <input type="text" placeholder="Nombre..." value={newName}
                   onChange={e => { setNName(e.target.value); setNErr(""); }}
                   onKeyDown={e => e.key === "Enter" && addParticipant()} maxLength={24}
                   style={{ flex: 1, padding: "10px 14px", background: "rgba(6,14,38,0.7)", border: `1.5px solid ${nameErr ? "var(--rose)" : "rgba(148,163,184,0.18)"}`, borderRadius: 10, color: "var(--white)", fontSize: 14, outline: "none", fontFamily: "'DM Sans',sans-serif" }}
+                />
+                <input type="password" placeholder="Contraseña..." value={newPass}
+                  onChange={e => { setNPass(e.target.value); setNErr(""); }}
+                  onKeyDown={e => e.key === "Enter" && addParticipant()} maxLength={32}
+                  style={{ width: 140, padding: "10px 14px", background: "rgba(6,14,38,0.7)", border: `1.5px solid ${nameErr ? "var(--rose)" : "rgba(148,163,184,0.18)"}`, borderRadius: 10, color: "var(--white)", fontSize: 14, outline: "none", fontFamily: "'DM Sans',sans-serif" }}
                 />
                 <button className="btn btn-primary" onClick={addParticipant} disabled={data.participants.length >= 8}>+ Agregar</button>
               </div>
