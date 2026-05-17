@@ -351,6 +351,10 @@ export default function App() {
   const [partLoginTarget, setPartTarget] = useState("");
   const [partLoginVal,   setPLVal]  = useState("");
   const [partLoginErr,   setPLErr]  = useState(false);
+  const [showDeleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleteTarget,  setDeleteTarget] = useState("");
+  const [deletePassVal, setDPVal]  = useState("");
+  const [deletePassErr, setDPErr]  = useState(false);
 
   /* Firestore real-time sync */
   useEffect(() => {
@@ -403,6 +407,21 @@ export default function App() {
       setPartTarget(name);
       setPLVal(""); setPLErr(false);
       setPartLogin(true);
+    }
+  };
+
+  const requestDelete = (name) => {
+    if (adminMode) { removePart(name); return; }
+    setDeleteTarget(name); setDPVal(""); setDPErr(false); setDeleteConfirm(true);
+  };
+
+  const submitDelete = () => {
+    const stored = (data.passwords || {})[deleteTarget];
+    if (deletePassVal === stored) {
+      removePart(deleteTarget);
+      setDeleteConfirm(false); setDPVal("");
+    } else {
+      setDPErr(true);
     }
   };
 
@@ -522,6 +541,28 @@ export default function App() {
               <button className="btn btn-ghost" onClick={() => { setLogin(false); setLVal(""); setLErr(false); }}>Cancelar</button>
             </div>
             <p style={{ fontSize: 11, color: "var(--silver)" }}>Contraseña: <span style={{ color: "var(--gold)" }}>mundial2026</span></p>
+          </div>
+        </div>
+      )}
+
+      {/* ══ DELETE CONFIRM MODAL ══ */}
+      {showDeleteConfirm && (
+        <div className="modal" onClick={e => e.target === e.currentTarget && setDeleteConfirm(false)}>
+          <div className="glass" style={{ borderRadius: 16, padding: 32, width: 340 }}>
+            <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 22, fontWeight: 600, letterSpacing: 2, marginBottom: 6, color: "var(--rose)" }}>ELIMINAR PARTICIPANTE</div>
+            <div style={{ fontSize: 13, color: "var(--silver)", marginBottom: 20 }}>
+              Ingresa la contraseña de <strong style={{ color: "var(--white)" }}>{deleteTarget}</strong> para confirmar la eliminación.
+            </div>
+            <input type="password" placeholder="Contraseña..." value={deletePassVal} autoFocus
+              onChange={e => { setDPVal(e.target.value); setDPErr(false); }}
+              onKeyDown={e => e.key === "Enter" && submitDelete()}
+              style={{ width: "100%", padding: "11px 14px", background: "rgba(6,14,38,0.8)", border: `1.5px solid ${deletePassErr ? "var(--rose)" : "rgba(148,163,184,0.2)"}`, borderRadius: 10, color: "var(--white)", fontSize: 15, outline: "none", marginBottom: 8, fontFamily: "'DM Sans',sans-serif" }}
+            />
+            {deletePassErr && <p style={{ fontSize: 12, color: "var(--rose)", marginBottom: 10 }}>Contraseña incorrecta.</p>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn" style={{ flex: 1, padding: "11px 0", background: "rgba(244,63,94,0.15)", border: "1px solid rgba(244,63,94,0.4)", color: "var(--rose)" }} onClick={submitDelete}>Eliminar</button>
+              <button className="btn btn-ghost" onClick={() => { setDeleteConfirm(false); setDPVal(""); setDPErr(false); }}>Cancelar</button>
+            </div>
           </div>
         </div>
       )}
@@ -850,7 +891,7 @@ export default function App() {
                       <div className="prog-fill" style={{ width: `${(filled / 72) * 100}%`, background: filled === 72 ? "var(--emerald)" : "var(--blue-l)" }} />
                     </div>
                   </div>
-                  <button onClick={() => removePart(name)} style={{ padding: "5px 10px", background: "rgba(244,63,94,0.1)", border: "1px solid rgba(244,63,94,0.3)", color: "var(--rose)", borderRadius: 7, cursor: "pointer", fontSize: 12, flexShrink: 0 }}>✕</button>
+                  <button onClick={() => requestDelete(name)} style={{ padding: "5px 10px", background: "rgba(244,63,94,0.1)", border: "1px solid rgba(244,63,94,0.3)", color: "var(--rose)", borderRadius: 7, cursor: "pointer", fontSize: 12, flexShrink: 0 }}>✕</button>
                 </div>
               );
             })}
