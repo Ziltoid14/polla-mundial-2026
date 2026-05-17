@@ -323,6 +323,51 @@ const CSS = `
   .st-row { display:grid; grid-template-columns:24px 1fr 24px 24px 24px 24px 30px 34px; gap:4px; padding:6px 12px; align-items:center; }
   .st-row.top { background:rgba(37,99,235,0.08); }
   .st-row.div { border-top:1px dashed rgba(148,163,184,0.15); }
+
+  /* ═══ MOBILE ═══ */
+  @media (max-width: 640px) {
+    /* Header */
+    .header-title { font-size:18px !important; letter-spacing:2px !important; }
+    .header-meta  { font-size:10px !important; }
+    .header-btns  { gap:6px !important; }
+    .header-btns .btn { font-size:11px !important; padding:6px 10px !important; }
+
+    /* Group team pills — hide on mobile */
+    .group-team-pills { display:none; }
+
+    /* Column headers — hide on mobile */
+    .match-col-headers { display:none; }
+
+    /* Match row — 2-row grid layout */
+    .match-row {
+      grid-template-columns: 1fr auto 1fr !important;
+      grid-template-rows: auto auto !important;
+      grid-template-areas:
+        "home pred away"
+        "date result pts" !important;
+      gap: 4px 6px !important;
+      padding: 10px 12px !important;
+    }
+    .match-row > *:nth-child(1) { grid-area: date; align-self:center; }
+    .match-row > *:nth-child(2) { grid-area: home; }
+    .match-row > *:nth-child(3) { grid-area: pred; justify-content:center; }
+    .match-row > *:nth-child(4) { grid-area: away; flex-direction:row-reverse !important; justify-content:flex-start !important; }
+    .match-row > *:nth-child(5) { grid-area: result; justify-content:center; }
+    .match-row > *:nth-child(6) { grid-area: pts; justify-content:flex-end; align-self:center; }
+
+    /* Smaller flags and inputs on mobile */
+    .flag-bubble { width:28px; height:28px; font-size:16px; }
+    .score-inp   { width:34px; height:34px; font-size:15px; }
+
+    /* Leaderboard — show only rank, name, total */
+    .lb-card { grid-template-columns: 36px 1fr 64px !important; }
+    .lb-card > *:nth-child(3),
+    .lb-card > *:nth-child(4),
+    .lb-card > *:nth-child(5) { display:none !important; }
+
+    /* La llave standings */
+    .st-row { padding:5px 10px; gap:2px; }
+  }
 `;
 
 /* ═══════════════════════ APP ═══════════════════════ */
@@ -501,14 +546,14 @@ export default function App() {
       <header style={{ borderBottom: "1px solid rgba(148,163,184,0.1)", padding: "16px 20px" }}>
         <div style={{ maxWidth: 1080, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
-            <h1 className="shimmer-text" style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, letterSpacing: 4, marginBottom: 3 }}>
+            <h1 className="shimmer-text header-title" style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, letterSpacing: 4, marginBottom: 3 }}>
               ⚽ POLLA MUNDIALERA 2026
             </h1>
-            <div style={{ fontSize: 12, color: "var(--silver)", letterSpacing: 1.5, fontWeight: 500 }}>
+            <div className="header-meta" style={{ fontSize: 12, color: "var(--silver)", letterSpacing: 1.5, fontWeight: 500 }}>
               {data.participants.length} PARTICIPANTE{data.participants.length !== 1 ? "S" : ""} &nbsp;·&nbsp; {totalRes}/72 RESULTADOS &nbsp;·&nbsp; FASE DE GRUPOS 11–27 JUN
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="header-btns" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <button className="btn btn-green" onClick={autoFetch} disabled={fetching}>
               {fetching ? "🔄 Buscando..." : "🔄 Actualizar resultados"}
             </button>
@@ -647,7 +692,7 @@ export default function App() {
               <div style={{ padding: "14px 20px", background: "rgba(37,99,235,0.1)", borderBottom: "1px solid rgba(148,163,184,0.1)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                   <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 24, fontWeight: 700, letterSpacing: 3 }}>GRUPO {grp}</span>
-                  <div style={{ display: "flex", gap: 6 }}>
+                  <div className="group-team-pills" style={{ display: "flex", gap: 6 }}>
                     {GD[grp].map(t => (
                       <div key={t} style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 20, background: "rgba(148,163,184,0.07)", border: "1px solid rgba(148,163,184,0.1)" }}>
                         <span style={{ fontSize: 14 }}>{FL[t]}</span>
@@ -659,7 +704,7 @@ export default function App() {
                 {adminMode && <span style={{ fontSize: 12, color: "var(--gold)", fontWeight: 600, letterSpacing: 1 }}>🔧 MODO ADMIN</span>}
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "56px 1fr 130px 1fr 96px 52px", gap: 8, padding: "8px 18px", borderBottom: "1px solid rgba(148,163,184,0.08)", fontSize: 10, color: "var(--silver)", letterSpacing: 1.5, fontWeight: 600 }}>
+              <div className="match-col-headers" style={{ display: "grid", gridTemplateColumns: "56px 1fr 130px 1fr 96px 52px", gap: 8, padding: "8px 18px", borderBottom: "1px solid rgba(148,163,184,0.08)", fontSize: 10, color: "var(--silver)", letterSpacing: 1.5, fontWeight: 600 }}>
                 <div>FECHA</div>
                 <div>LOCAL</div>
                 <div style={{ textAlign: "center" }}>{person ? `PRED. ${person.split(" ")[0].toUpperCase()}` : "PREDICCIÓN"}</div>
