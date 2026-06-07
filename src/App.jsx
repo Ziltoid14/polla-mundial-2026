@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { db } from "./firebase";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 
@@ -103,6 +103,69 @@ const fmtDate=(d)=>{
   const mes=["","ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
   return `${+day} ${mes[+m]}`;
 };
+
+/* ═══════════════════════ EXTRAS (premios) ═══════════════════════ */
+const TOURNAMENT_START = "2026-06-11";
+
+// Todos los países del torneo, ordenados alfabéticamente
+const ALL_TEAMS = [...new Set(Object.values(GD).flat())].sort((a,b)=>a.localeCompare(b,"es"));
+
+// Jugadores destacados (nombre + país) — para Goleador y MVP
+const PLAYERS = [
+  {n:"Kylian Mbappé",c:"Francia"},{n:"Ousmane Dembélé",c:"Francia"},{n:"Antoine Griezmann",c:"Francia"},
+  {n:"Vinícius Jr",c:"Brasil"},{n:"Rodrygo",c:"Brasil"},{n:"Raphinha",c:"Brasil"},{n:"Endrick",c:"Brasil"},
+  {n:"Lionel Messi",c:"Argentina"},{n:"Lautaro Martínez",c:"Argentina"},{n:"Julián Álvarez",c:"Argentina"},
+  {n:"Lamine Yamal",c:"España"},{n:"Pedri",c:"España"},{n:"Nico Williams",c:"España"},{n:"Dani Olmo",c:"España"},
+  {n:"Harry Kane",c:"Inglaterra"},{n:"Jude Bellingham",c:"Inglaterra"},{n:"Bukayo Saka",c:"Inglaterra"},{n:"Phil Foden",c:"Inglaterra"},
+  {n:"Cristiano Ronaldo",c:"Portugal"},{n:"Bruno Fernandes",c:"Portugal"},{n:"Rafael Leão",c:"Portugal"},
+  {n:"Jamal Musiala",c:"Alemania"},{n:"Florian Wirtz",c:"Alemania"},{n:"Kai Havertz",c:"Alemania"},
+  {n:"Cody Gakpo",c:"P.Bajos"},{n:"Memphis Depay",c:"P.Bajos"},{n:"Xavi Simons",c:"P.Bajos"},
+  {n:"Kevin De Bruyne",c:"Bélgica"},{n:"Romelu Lukaku",c:"Bélgica"},{n:"Jérémy Doku",c:"Bélgica"},
+  {n:"Darwin Núñez",c:"Uruguay"},{n:"Federico Valverde",c:"Uruguay"},
+  {n:"Erling Haaland",c:"Noruega"},{n:"Martin Ødegaard",c:"Noruega"},
+  {n:"Mohamed Salah",c:"Egipto"},{n:"Sadio Mané",c:"Senegal"},{n:"Nicolas Jackson",c:"Senegal"},
+  {n:"Son Heung-min",c:"Corea"},{n:"Achraf Hakimi",c:"Marruecos"},{n:"Youssef En-Nesyri",c:"Marruecos"},
+  {n:"James Rodríguez",c:"Colombia"},{n:"Luis Díaz",c:"Colombia"},
+  {n:"Takefusa Kubo",c:"Japón"},{n:"Kaoru Mitoma",c:"Japón"},{n:"Luka Modrić",c:"Croacia"},
+  {n:"Alexander Isak",c:"Suecia"},{n:"Viktor Gyökeres",c:"Suecia"},
+  {n:"Christian Pulisic",c:"EE.UU."},{n:"Alphonso Davies",c:"Canadá"},{n:"Jonathan David",c:"Canadá"},
+  {n:"Arda Güler",c:"Turquía"},{n:"Hakan Çalhanoğlu",c:"Turquía"},{n:"Moisés Caicedo",c:"Ecuador"},
+  {n:"Mohammed Kudus",c:"Ghana"},{n:"Breel Embolo",c:"Suiza"},{n:"Raúl Jiménez",c:"México"},
+  {n:"Hirving Lozano",c:"México"},{n:"Sébastien Haller",c:"C.Marfil"},
+];
+
+// Arqueros destacados — para Guante de Oro
+const GKS = [
+  {n:"Emiliano Martínez",c:"Argentina"},{n:"Alisson",c:"Brasil"},{n:"Ederson",c:"Brasil"},
+  {n:"Thibaut Courtois",c:"Bélgica"},{n:"Mike Maignan",c:"Francia"},{n:"Unai Simón",c:"España"},
+  {n:"David Raya",c:"España"},{n:"Jordan Pickford",c:"Inglaterra"},{n:"Marc-André ter Stegen",c:"Alemania"},
+  {n:"Yann Sommer",c:"Suiza"},{n:"Yassine Bono",c:"Marruecos"},{n:"Bart Verbruggen",c:"P.Bajos"},
+  {n:"Guillermo Ochoa",c:"México"},{n:"Diogo Costa",c:"Portugal"},{n:"Dominik Livaković",c:"Croacia"},
+  {n:"Sergio Rochet",c:"Uruguay"},{n:"Matt Turner",c:"EE.UU."},
+];
+
+const EXTRA_CATS = [
+  {id:"campeon",   label:"Campeón",       icon:"🏆", pts:25, type:"country"},
+  {id:"subcampeon",label:"Subcampeón",    icon:"🥈", pts:15, type:"country"},
+  {id:"tercero",   label:"Tercer Puesto", icon:"🥉", pts:10, type:"country"},
+  {id:"goleador",  label:"Goleador",      icon:"👟", pts:20, type:"player"},
+  {id:"mvp",       label:"MVP",           icon:"⚽", pts:10, type:"player"},
+  {id:"guante",    label:"Guante de Oro", icon:"🧤", pts:10, type:"gk"},
+];
+
+// Mapa nombre de jugador -> país, para mostrar su bandera
+const PLAYER_COUNTRY = {};
+[...PLAYERS, ...GKS].forEach(p => { PLAYER_COUNTRY[p.n] = p.c; });
+
+const extrasPts = (name, extras, er) =>
+  EXTRA_CATS.reduce((s,c) => {
+    const pick = extras?.[name]?.[c.id];
+    const real = er?.[c.id];
+    return s + ((pick && real && pick === real) ? c.pts : 0);
+  }, 0);
+
+const grandTotal = (name, data) =>
+  totalPts(name, data.predictions, data.results) + extrasPts(name, data.extras || {}, data.extrasResults || {});
 
 /* ═══════════════════════ DESIGN TOKENS ═══════════════════════ */
 const CSS = `
@@ -324,6 +387,71 @@ const CSS = `
   .st-row.top { background:rgba(37,99,235,0.08); }
   .st-row.div { border-top:1px dashed rgba(148,163,184,0.15); }
 
+  /* ═══ SEARCHABLE SELECT ═══ */
+  .ss-wrap { position:relative; width:100%; }
+  .ss-trigger {
+    width:100%; display:flex; align-items:center; gap:10px;
+    padding:10px 14px;
+    background:rgba(6,14,38,0.7);
+    border:1.5px solid rgba(148,163,184,0.2);
+    border-radius:10px;
+    color:var(--white);
+    font-family:'DM Sans',sans-serif; font-size:14px;
+    cursor:pointer; text-align:left;
+    transition:border-color 0.2s, box-shadow 0.2s;
+  }
+  .ss-trigger:hover { border-color:var(--blue-l); }
+  .ss-trigger.open { border-color:var(--blue-l); box-shadow:0 0 0 3px rgba(59,130,246,0.2); }
+  .ss-trigger.gold { border-color:var(--gold); background:rgba(245,158,11,0.08); }
+  .ss-trigger:disabled { opacity:0.5; cursor:not-allowed; }
+  .ss-trigger .ss-flag { font-size:22px; line-height:1; flex-shrink:0; }
+  .ss-trigger .ss-chev { margin-left:auto; color:var(--silver); font-size:11px; }
+  .ss-placeholder { color:var(--silver); }
+  .ss-panel {
+    position:absolute; z-index:120; top:calc(100% + 5px); left:0; right:0;
+    max-height:260px; overflow-y:auto;
+    background:rgba(10,22,48,0.98);
+    backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+    border:1px solid var(--glass-b2);
+    border-radius:12px;
+    box-shadow:var(--shadow);
+    padding:6px;
+  }
+  .ss-searchbox {
+    width:100%; padding:9px 12px; margin-bottom:4px;
+    background:rgba(6,14,38,0.8);
+    border:1.5px solid rgba(148,163,184,0.2);
+    border-radius:8px; color:var(--white);
+    font-family:'DM Sans',sans-serif; font-size:14px; outline:none;
+    position:sticky; top:0;
+  }
+  .ss-searchbox:focus { border-color:var(--blue-l); }
+  .ss-opt {
+    display:flex; align-items:center; gap:10px;
+    padding:9px 10px; border-radius:8px;
+    cursor:pointer; transition:background 0.12s;
+  }
+  .ss-opt:hover, .ss-opt.kbd { background:rgba(37,99,235,0.18); }
+  .ss-opt .ss-flag { font-size:20px; line-height:1; flex-shrink:0; }
+  .ss-opt-label { font-size:14px; color:var(--white); }
+  .ss-opt-sub { font-size:11px; color:var(--silver); margin-left:auto; }
+  .ss-empty { padding:14px; text-align:center; color:var(--silver); font-size:13px; }
+
+  /* ═══ EXTRAS CARDS ═══ */
+  .extras-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
+  .extra-card {
+    border-radius:16px; padding:18px;
+    border:1px solid var(--glass-b);
+    background:var(--glass);
+    position:relative;
+  }
+  .extra-card.done { border-color:rgba(245,158,11,0.4); }
+  .extra-icon { font-size:38px; line-height:1; margin-bottom:8px; }
+  .extra-pts {
+    font-family:'Oswald',sans-serif; font-size:22px; font-weight:700;
+    color:var(--gold-l); letter-spacing:1px;
+  }
+
   /* ═══ MOBILE ═══ */
   @media (max-width: 640px) {
     /* Header */
@@ -381,9 +509,79 @@ const CSS = `
   }
 `;
 
+/* ═══════════════════════ SEARCHABLE SELECT ═══════════════════════ */
+function SearchableSelect({ options, value, onChange, placeholder = "Elegir…", disabled, gold }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const selected = options.find(o => o.value === value);
+  const ql = q.trim().toLowerCase();
+  const filtered = ql
+    ? options.filter(o => o.label.toLowerCase().includes(ql) || (o.sub || "").toLowerCase().includes(ql))
+    : options;
+  const showCustom = ql && !options.some(o => o.label.toLowerCase() === ql);
+
+  return (
+    <div className="ss-wrap" ref={wrapRef}>
+      <button type="button" disabled={disabled}
+        className={`ss-trigger${open ? " open" : ""}${gold ? " gold" : ""}`}
+        onClick={() => { if (!disabled) { setOpen(o => !o); setQ(""); } }}>
+        {selected ? (
+          <>
+            {selected.flag && <span className="ss-flag">{selected.flag}</span>}
+            <span>{selected.label}</span>
+            {selected.sub && <span className="ss-opt-sub">{selected.sub}</span>}
+          </>
+        ) : (
+          <span className="ss-placeholder">{placeholder}</span>
+        )}
+        <span className="ss-chev">▼</span>
+      </button>
+      {open && (
+        <div className="ss-panel">
+          <input className="ss-searchbox" autoFocus placeholder="Buscar…" value={q}
+            onChange={e => setQ(e.target.value)} />
+          {value && (
+            <div className="ss-opt" onClick={() => { onChange(""); setOpen(false); }}>
+              <span className="ss-flag">✖️</span><span className="ss-opt-label" style={{ color: "var(--silver)" }}>Quitar selección</span>
+            </div>
+          )}
+          {filtered.map(o => (
+            <div key={o.value} className="ss-opt" onClick={() => { onChange(o.value); setOpen(false); }}>
+              {o.flag && <span className="ss-flag">{o.flag}</span>}
+              <span className="ss-opt-label">{o.label}</span>
+              {o.sub && <span className="ss-opt-sub">{o.sub}</span>}
+            </div>
+          ))}
+          {showCustom && (
+            <div className="ss-opt" onClick={() => { onChange(q.trim()); setOpen(false); }}>
+              <span className="ss-flag">➕</span><span className="ss-opt-label">Usar: “{q.trim()}”</span>
+            </div>
+          )}
+          {!filtered.length && !showCustom && <div className="ss-empty">Sin resultados</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Opciones para los selects de premios
+const COUNTRY_OPTS = ALL_TEAMS.map(t => ({ value: t, label: t, flag: FL[t] || "🏳️" }));
+const PLAYER_OPTS  = PLAYERS.map(p => ({ value: p.n, label: p.n, flag: FL[p.c] || "🏳️", sub: p.c }));
+const GK_OPTS      = GKS.map(p => ({ value: p.n, label: p.n, flag: FL[p.c] || "🏳️", sub: p.c }));
+const optsFor = (type) => type === "country" ? COUNTRY_OPTS : type === "gk" ? GK_OPTS : PLAYER_OPTS;
+
 /* ═══════════════════════ APP ═══════════════════════ */
 const DOC_REF = doc(db, "polla2026", "data");
-const EMPTY   = { participants: [], predictions: {}, results: {}, passwords: {} };
+const EMPTY   = { participants: [], predictions: {}, results: {}, passwords: {}, extras: {}, extrasResults: {} };
 
 export default function App() {
   const [data,   setData]   = useState(EMPTY);
@@ -501,6 +699,15 @@ export default function App() {
     persist(s => ({ ...s, results: { ...s.results, [matchId]: { ...(s.results[matchId] || { h: null, a: null }), [side]: val === "" ? null : Math.max(0, Math.min(30, +val || 0)) } } }));
   };
 
+  const setExtra = (catId, val) => {
+    if (!person) return;
+    persist(s => ({ ...s, extras: { ...(s.extras || {}), [person]: { ...((s.extras || {})[person] || {}), [catId]: val } } }));
+  };
+
+  const setExtraResult = (catId, val) => {
+    persist(s => ({ ...s, extrasResults: { ...(s.extrasResults || {}), [catId]: val } }));
+  };
+
   const switchGrp = (g) => { setGrp(g); setGrpKey(k => k + 1); };
 
   /* Auto-fetch results via Anthropic API */
@@ -545,7 +752,7 @@ export default function App() {
     </div>
   );
 
-  const sorted = [...data.participants].sort((a, b) => totalPts(b, data.predictions, data.results) - totalPts(a, data.predictions, data.results));
+  const sorted = [...data.participants].sort((a, b) => grandTotal(b, data) - grandTotal(a, data));
   const totalRes = Object.keys(data.results).filter(k => data.results[k]?.h != null && data.results[k]?.a != null).length;
   const filledP = person ? Object.values(MATCHES).flat().filter(m => { const p = data.predictions[person]?.[m.id]; return p?.h !== "" && p?.h != null && p?.a !== "" && p?.a != null; }).length : 0;
 
@@ -650,6 +857,7 @@ export default function App() {
         <div style={{ maxWidth: 1080, margin: "0 auto", display: "flex", padding: "0 12px" }}>
           {[
             { id: "predicciones", label: "⚽  Predicciones" },
+            { id: "premios", label: "🎖️  Premios" },
             { id: "clasificacion", label: "🏆  Clasificación" },
             { id: "llave", label: "📊  La Llave" },
             { id: "participantes", label: "👥  Participantes" },
@@ -806,6 +1014,95 @@ export default function App() {
           </div>
         )}
 
+        {/* ════ PREMIOS ════ */}
+        {tab === "premios" && (() => {
+          const tournamentStarted = todayStr() >= TOURNAMENT_START;
+          const canEdit = adminMode || (!!person && authed.has(person) && !tournamentStarted);
+          const myExtras = (data.extras || {})[person] || {};
+          const er = data.extrasResults || {};
+          return (
+            <div>
+              <div className="section-header" style={{ marginBottom: 16, display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+                <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 30, fontWeight: 700, letterSpacing: 3 }}>PREMIOS</h2>
+                <span style={{ fontSize: 13, color: "var(--silver)" }}>predicciones especiales · suman puntos extra</span>
+              </div>
+
+              {/* Participant selector */}
+              <div className="glass" style={{ borderRadius: 14, padding: "16px 20px", marginBottom: 16 }}>
+                <p style={{ fontSize: 11, letterSpacing: 2, color: "var(--silver)", marginBottom: 10, fontWeight: 500 }}>SELECCIONAR PARTICIPANTE</p>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {!data.participants.length && <span style={{ fontSize: 14, color: "var(--silver)" }}>Agrega participantes en la pestaña 👥 primero</span>}
+                  {data.participants.map(p => (
+                    <button key={p} className={`part-chip${person === p ? " active" : ""}`} onClick={() => selectPerson(p)}>
+                      {p} {!authed.has(p) && !adminMode && <span style={{ fontSize: 11, opacity: 0.6 }}>🔒</span>}
+                    </button>
+                  ))}
+                </div>
+                {person && tournamentStarted && !adminMode && (
+                  <p style={{ fontSize: 12, color: "var(--gold)", marginTop: 10 }}>🔒 El torneo ya comenzó — las predicciones de premios están cerradas.</p>
+                )}
+              </div>
+
+              {/* Cards */}
+              {person && (
+                <div className="extras-grid">
+                  {EXTRA_CATS.map(c => {
+                    const pick = myExtras[c.id] || "";
+                    const real = er[c.id];
+                    const resolved = !!real;
+                    const hit = resolved && pick && pick === real;
+                    const opts = optsFor(c.type);
+                    const flagFor = (v) => c.type === "country" ? (FL[v] || "🏳️") : (FL[PLAYER_COUNTRY[v]] || "🏳️");
+                    return (
+                      <div key={c.id} className={`extra-card${hit ? " done" : ""}`}>
+                        <div className="extra-icon">{c.icon}</div>
+                        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+                          <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 19, fontWeight: 600, letterSpacing: 1 }}>{c.label.toUpperCase()}</span>
+                          <span className="extra-pts">+{c.pts}</span>
+                        </div>
+                        <SearchableSelect
+                          options={opts}
+                          value={pick}
+                          onChange={(v) => setExtra(c.id, v)}
+                          placeholder={c.type === "country" ? "Elegir país…" : "Elegir jugador…"}
+                          disabled={!canEdit}
+                        />
+                        {resolved && (
+                          <div style={{ marginTop: 10, fontSize: 12, display: "flex", alignItems: "center", gap: 6, color: hit ? "var(--emerald)" : "var(--rose)" }}>
+                            <span>{hit ? "✓" : "✗"}</span>
+                            <span>Resultado oficial: <strong>{flagFor(real)} {real}</strong> {hit ? `(+${c.pts})` : "(0)"}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Admin: official results */}
+              {adminMode && (
+                <div className="glass" style={{ borderRadius: 16, padding: 20, marginTop: 20, border: "1px solid rgba(245,158,11,0.3)" }}>
+                  <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 16, fontWeight: 600, letterSpacing: 2, color: "var(--gold)", marginBottom: 14 }}>🔧 RESULTADOS OFICIALES (ADMIN)</p>
+                  <div className="extras-grid">
+                    {EXTRA_CATS.map(c => (
+                      <div key={c.id}>
+                        <p style={{ fontSize: 12, color: "var(--silver)", marginBottom: 6 }}>{c.icon} {c.label}</p>
+                        <SearchableSelect
+                          options={optsFor(c.type)}
+                          value={er[c.id] || ""}
+                          onChange={(v) => setExtraResult(c.id, v)}
+                          placeholder="Definir ganador…"
+                          gold
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* ════ CLASIFICACIÓN ════ */}
         {tab === "clasificacion" && (
           <div>
@@ -823,7 +1120,7 @@ export default function App() {
               </div>
               {!sorted.length && <div style={{ padding: "36px", textAlign: "center", color: "var(--silver)", fontSize: 14 }}>No hay participantes aún — ve a la pestaña 👥</div>}
               {sorted.map((name, i) => {
-                const pts = totalPts(name, data.predictions, data.results);
+                const pts = grandTotal(name, data);
                 const exact = countExact(name, data.predictions, data.results);
                 const played = countPlayed(name, data.predictions, data.results);
                 const winners = Object.values(MATCHES).flat().filter(m => getPts(data.predictions[name]?.[m.id], data.results[m.id]) === 1).length;
@@ -934,7 +1231,7 @@ export default function App() {
             )}
 
             {data.participants.map((name, i) => {
-              const pts = totalPts(name, data.predictions, data.results);
+              const pts = grandTotal(name, data);
               const filled = Object.values(MATCHES).flat().filter(m => { const p = data.predictions[name]?.[m.id]; return p?.h !== "" && p?.h != null && p?.a !== "" && p?.a != null; }).length;
               return (
                 <div key={name} className="glass lift" style={{ borderRadius: 12, padding: "14px 18px", marginBottom: 10, display: "flex", alignItems: "center", gap: 14 }}>
