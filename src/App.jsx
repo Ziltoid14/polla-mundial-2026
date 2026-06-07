@@ -388,13 +388,63 @@ const CSS = `
   .st-row.top { background:rgba(37,99,235,0.08); }
   .st-row.div { border-top:1px dashed rgba(148,163,184,0.15); }
 
+  /* ═══ COUNTDOWN ═══ */
+  .countdown {
+    border-radius:14px; padding:14px 20px;
+    display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+    position:relative; overflow:hidden;
+  }
+  .countdown::before {
+    content:''; position:absolute; inset:0;
+    background:radial-gradient(ellipse 300px 80px at 0% 50%, rgba(245,158,11,0.10), transparent 70%),
+               radial-gradient(ellipse 300px 80px at 100% 50%, rgba(37,99,235,0.12), transparent 70%);
+    pointer-events:none;
+  }
+  .countdown-label { font-family:'Oswald',sans-serif; font-size:13px; letter-spacing:2px; color:var(--silver-l); font-weight:500; }
+  .countdown-live { font-family:'Oswald',sans-serif; font-size:16px; letter-spacing:2px; color:var(--gold-l); font-weight:700; animation:pulseLive 1.6s ease-in-out infinite; }
+  @keyframes pulseLive { 0%,100%{opacity:1;} 50%{opacity:0.55;} }
+  .countdown-units { display:flex; gap:10px; }
+  .cd-unit {
+    display:flex; flex-direction:column; align-items:center; min-width:54px;
+    padding:8px 6px; border-radius:10px;
+    background:rgba(6,14,38,0.6); border:1px solid var(--glass-b);
+  }
+  .cd-num { font-family:'Oswald',sans-serif; font-size:26px; font-weight:700; color:#fff; line-height:1; letter-spacing:1px; }
+  .cd-lbl { font-size:10px; color:var(--silver); letter-spacing:1.5px; margin-top:4px; text-transform:uppercase; }
+
+  /* ═══ TAB FADE ═══ */
+  .tab-fade { animation:tabFade 0.35s ease both; }
+  @keyframes tabFade { 0% { opacity:0; transform:translateY(8px); } 100% { opacity:1; transform:translateY(0); } }
+
   /* ═══ FORM (últimos 5) + H2H ═══ */
-  .form-row { display:flex; gap:3px; margin-top:4px; }
+  .form-row { display:flex; gap:4px; margin-top:5px; }
   .form-row.right { justify-content:flex-end; }
-  .form-sq { width:13px; height:13px; border-radius:3px; flex-shrink:0; }
-  .form-W { background:var(--emerald); }
-  .form-D { background:var(--gold); }
-  .form-L { background:var(--rose); }
+  .form-sq-wrap { position:relative; display:inline-flex; cursor:pointer; padding:1px; }
+  .form-sq { width:14px; height:14px; border-radius:4px; flex-shrink:0; box-shadow:inset 0 1px 0 rgba(255,255,255,0.15); transition:transform 0.12s; }
+  .form-sq-wrap:hover .form-sq { transform:scale(1.18); }
+  .form-W { background:linear-gradient(160deg,#34d399,#059669); }
+  .form-D { background:linear-gradient(160deg,#fcd34d,#d97706); }
+  .form-L { background:linear-gradient(160deg,#fb7185,#e11d48); }
+  .form-dot { width:9px; height:9px; border-radius:3px; display:inline-block; }
+  .form-tip-fixed {
+    position:fixed; transform:translate(-50%, calc(-100% - 12px));
+    z-index:400; min-width:148px;
+    display:flex; flex-direction:column; gap:3px;
+    padding:11px 13px; border-radius:12px;
+    background:rgba(8,16,40,0.98); backdrop-filter:blur(14px);
+    border:1px solid var(--glass-b2); box-shadow:var(--shadow);
+    pointer-events:none; white-space:nowrap;
+    animation:tipIn 0.14s ease both;
+  }
+  .form-tip-fixed::after {
+    content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%);
+    border:7px solid transparent; border-top-color:rgba(8,16,40,0.98);
+  }
+  .form-tip-top { display:flex; align-items:center; gap:6px; font-size:11px; font-weight:600; color:var(--silver-l); letter-spacing:0.5px; }
+  .form-tip-score { font-family:'Oswald',sans-serif; font-size:22px; font-weight:700; color:var(--white); letter-spacing:1px; }
+  .form-tip-sub { font-size:12.5px; color:var(--silver-l); }
+  .form-tip-date { font-size:10.5px; color:var(--silver); }
+  @keyframes tipIn { 0% { opacity:0; transform:translate(-50%, calc(-100% - 6px)); } 100% { opacity:1; transform:translate(-50%, calc(-100% - 12px)); } }
   .h2h-btn {
     width:22px; height:22px; border-radius:6px; margin-top:3px;
     border:1px solid rgba(148,163,184,0.25); background:rgba(15,31,66,0.6);
@@ -690,6 +740,23 @@ export default function App() {
   const [deletePassVal, setDPVal]  = useState("");
   const [deletePassErr, setDPErr]  = useState(false);
   const [h2hMatch,   setH2h]   = useState(null);
+  const [formTip,    setFormTip] = useState(null); // { team, idx }
+  const tipTimer = useRef(null);
+  const [now, setNow] = useState(Date.now());
+
+  /* Reloj para la cuenta regresiva */
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  /* Cerrar tooltip de forma al tocar fuera */
+  useEffect(() => {
+    if (!formTip) return;
+    const onDoc = (e) => { if (!e.target.closest?.(".form-sq-wrap")) setFormTip(null); };
+    document.addEventListener("click", onDoc);
+    return () => document.removeEventListener("click", onDoc);
+  }, [formTip]);
 
   /* Firestore real-time sync */
   useEffect(() => {
@@ -813,12 +880,29 @@ export default function App() {
   const totalRes = Object.keys(data.results).filter(k => data.results[k]?.h != null && data.results[k]?.a != null).length;
   const filledP = person ? Object.values(MATCHES).flat().filter(m => { const p = data.predictions[person]?.[m.id]; return p?.h !== "" && p?.h != null && p?.a !== "" && p?.a != null; }).length : 0;
 
+  const openTip = (el, payload) => {
+    const r = el.getBoundingClientRect();
+    setFormTip({ ...payload, x: r.left + r.width / 2, y: r.top });
+  };
+
   const renderForm = (team, right) => {
     const f = (data.form || {})[team];
     if (!f || !f.length) return null;
     return (
       <div className={`form-row${right ? " right" : ""}`}>
-        {f.slice(-5).map((r, i) => <span key={i} className={`form-sq form-${r}`} title={r} />)}
+        {f.slice(-5).map((entry, i) => {
+          const e = typeof entry === "string" ? { r: entry } : (entry || {});
+          const payload = { team, idx: i, e };
+          const isOpen = formTip && formTip.team === team && formTip.idx === i;
+          return (
+            <span key={i} className="form-sq-wrap"
+              onMouseEnter={(ev) => { const el = ev.currentTarget; clearTimeout(tipTimer.current); tipTimer.current = setTimeout(() => openTip(el, payload), 500); }}
+              onMouseLeave={() => { clearTimeout(tipTimer.current); setFormTip(t => (t && t.team === team && t.idx === i ? null : t)); }}
+              onClick={(ev) => { ev.stopPropagation(); clearTimeout(tipTimer.current); isOpen ? setFormTip(null) : openTip(ev.currentTarget, payload); }}>
+              <span className={`form-sq form-${e.r}`} />
+            </span>
+          );
+        })}
       </div>
     );
   };
@@ -918,6 +1002,26 @@ export default function App() {
         </div>
       )}
 
+      {/* ══ FORM TOOLTIP (fijo) ══ */}
+      {formTip && formTip.e && (() => {
+        const e = formTip.e;
+        const resWord = e.r === "W" ? "Victoria" : e.r === "D" ? "Empate" : e.r === "L" ? "Derrota" : "";
+        return (
+          <div className="form-tip-fixed" style={{ left: formTip.x, top: formTip.y }}>
+            {e.opp ? (
+              <>
+                <span className="form-tip-top"><span className={`form-dot form-${e.r}`} />{resWord}</span>
+                <span className="form-tip-score">{e.score || "—"}</span>
+                <span className="form-tip-sub">vs {e.opp}</span>
+                <span className="form-tip-date">{e.date ? fmtDate(e.date) : "fecha s/d"}{e.comp ? ` · ${e.comp}` : ""}</span>
+              </>
+            ) : (
+              <span className="form-tip-sub">{resWord || "Sin detalle"}</span>
+            )}
+          </div>
+        );
+      })()}
+
       {/* ══ H2H MODAL ══ */}
       {h2hMatch && (() => {
         const key = h2hKey(h2hMatch.home, h2hMatch.away);
@@ -972,8 +1076,41 @@ export default function App() {
         </div>
       </div>
 
+      {/* ══ COUNTDOWN ══ */}
+      {(() => {
+        const kickoff = new Date(2026, 5, 11, 12, 0, 0).getTime(); // 11 jun 2026, primer partido
+        const diff = kickoff - now;
+        const pad = (n) => String(n).padStart(2, "0");
+        const d = Math.floor(diff / 86400000);
+        const h = Math.floor((diff % 86400000) / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        return (
+          <div style={{ maxWidth: 1080, margin: "0 auto", padding: "16px 16px 0" }}>
+            <div className="countdown glass">
+              {diff > 0 ? (
+                <>
+                  <span className="countdown-label">⏱ FALTA PARA EL PRIMER PARTIDO</span>
+                  <div className="countdown-units">
+                    {[[d, "días"], [pad(h), "hrs"], [pad(m), "min"], [pad(s), "seg"]].map(([v, l]) => (
+                      <div key={l} className="cd-unit">
+                        <span className="cd-num">{v}</span>
+                        <span className="cd-lbl">{l}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <span className="countdown-live">🔴 ¡EL MUNDIAL ESTÁ EN MARCHA!</span>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ══ CONTENT ══ */}
       <main style={{ maxWidth: 1080, margin: "0 auto", padding: "20px 16px" }}>
+        <div key={tab} className="tab-fade">
 
         {/* ════ PREDICCIONES ════ */}
         {tab === "predicciones" && (
@@ -1463,6 +1600,7 @@ export default function App() {
           </div>
         )}
 
+        </div>
       </main>
     </div>
   );

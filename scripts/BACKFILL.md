@@ -17,23 +17,30 @@ Rellenas datos históricos reales: **forma** (últimos 5 de cada selección) e *
 
 3. **Si `pendingGroups` es 0 → TERMINA (ya está todo, costo casi cero).**
 
-4. Procesa **solo los primeros 2 grupos** que tengan datos faltantes (para no gastar de más en una corrida). Para cada uno:
-   - **Forma** (`missingForm`): por cada equipo, 1 búsqueda web "últimos 5 partidos resultados [selección] 2026". Construye un array de 5 elementos `"W"`/`"D"`/`"L"` del más antiguo al más reciente.
-   - **H2H** (`missingH2H`): por cada par, 1 búsqueda web "head to head [A] vs [B] últimos enfrentamientos resultados fecha". Toma los **últimos 3** encuentros. Cada uno: `{ "date":"YYYY-MM-DD", "comp":"competición", "score":"X-Y" }`. Si nunca se han enfrentado, usa un array vacío `[]` (la app mostrará "Sin datos").
+4. Procesa los grupos que tengan datos faltantes (si vas con poco presupuesto, 2-3 por corrida). Para cada uno:
+   - **Forma** (`missingForm`): por cada equipo, 1 búsqueda web "últimos 5 partidos resultados [selección] 2026". Construye un array de **objetos** (los últimos 5, del más antiguo al más reciente). Cada objeto:
+     `{ "r":"W|D|L", "date":"YYYY-MM-DD", "opp":"Rival", "score":"X-Y", "comp":"Amistoso|Clasificación|Mundial|..." }`
+     (`r` = resultado del equipo: W gana, D empata, L pierde. `score` desde la perspectiva del equipo, p.ej. México 5-1 → "5-1".)
+   - **H2H** (`missingH2H`): por cada par, 1 búsqueda web "head to head [A] vs [B] últimos enfrentamientos resultados fecha". Toma los **últimos 3** encuentros. Cada uno: `{ "date":"YYYY-MM-DD", "comp":"competición", "score":"X-Y" }`. Si nunca se han enfrentado, usa un array vacío `[]`.
 
 5. Arma UN parche JSON (`/tmp/backfill.json`) con la forma:
    ```json
    {
-     "form": { "México": ["W","W","D","L","W"] },
+     "form": {
+       "México": [
+         { "r":"W", "date":"2026-01-22", "opp":"Panamá", "score":"1-0", "comp":"Amistoso" },
+         { "r":"W", "date":"2026-06-04", "opp":"Serbia", "score":"5-1", "comp":"Amistoso" }
+       ]
+     },
      "h2h": {
        "México vs Sudáfrica": [
-         { "date":"2010-06-11", "comp":"Mundial", "score":"1-1" },
-         { "date":"2005-06-18", "comp":"Confederaciones", "score":"1-2" }
+         { "date":"2010-06-11", "comp":"Mundial", "score":"1-1" }
        ]
      }
    }
    ```
    ⚠️ La clave de `h2h` debe ser EXACTAMENTE el campo `key` que entregó `backfill-todo.mjs`.
+   ⚠️ El array de `form` reemplaza al anterior (no se concatena): incluye los 5 completos.
 
 6. Sube:
    ```bash
