@@ -12,6 +12,19 @@ const isAI = (n) => AI_PARTICIPANTS.includes(n);
 /* Clave canónica para historial entre dos selecciones */
 const h2hKey = (a, b) => [a, b].sort((x, y) => x.localeCompare(y, "es")).join(" vs ");
 
+/* Separa un emoji inicial del nombre. "🔮 Oráculo" -> { icon:"🔮", clean:"Oráculo" } */
+const splitName = (full) => {
+  const m = String(full || "").match(/^(\p{Extended_Pictographic}(?:‍\p{Extended_Pictographic})*️?)\s+(.*)$/u);
+  if (m && m[2].trim()) return { icon: m[1], clean: m[2].trim() };
+  return { icon: null, clean: String(full || "") };
+};
+
+/* Íconos elegibles para el perfil de cada participante */
+const AVATAR_ICONS = [
+  "⚽","🏆","🔥","⭐","👑","💎","🚀","⚡","🎯","🎩","🥇","💪","🧤","🥊","🎮","🌟",
+  "🦁","🐯","🐻","🦅","🐺","🐉","🦊","🐸","🐼","🦈","🐙","🦄","🐲","🐮","🦓","🐔",
+];
+
 /* ═══════════════════════ UTILS ═══════════════════════ */
 const todayStr = () => new Date().toISOString().split("T")[0];
 const isLocked  = (date) => date && date <= todayStr();
@@ -526,24 +539,29 @@ const CSS = `
   }
 
   /* ═══ BRACKET ═══ */
-  .bracket-scroll { overflow-x:auto; overflow-y:hidden; padding:4px 4px 16px; }
-  .bracket { display:flex; gap:26px; min-width:max-content; align-items:stretch; }
-  .bk-round { display:flex; flex-direction:column; justify-content:space-around; min-width:172px; }
+  .bracket-scroll { overflow-x:auto; overflow-y:hidden; padding:4px 4px 16px; --bk-line:rgba(148,163,184,0.30); --bk-gold:var(--gold-l); --tl:16px; --sp:16px; }
+  .bracket { display:flex; gap:calc(var(--tl) + var(--sp) * 2); min-width:max-content; align-items:stretch; }
+  .bk-round { display:flex; flex-direction:column; min-width:182px; }
   .bk-round-head {
     font-family:'Oswald',sans-serif; font-size:12px; letter-spacing:2px; color:var(--silver);
     text-align:center; padding:6px 0; margin-bottom:6px;
     border-bottom:1px solid rgba(148,163,184,0.1);
   }
+  .bk-col { flex:1 1 auto; display:flex; flex-direction:column; }
+  .bk-cell { flex:1 0 auto; padding:5px 0; display:flex; flex-direction:column; justify-content:center; position:relative; }
   .bk-match {
     background:rgba(15,31,66,0.6); border:1px solid var(--glass-b);
-    border-radius:10px; overflow:hidden; margin:7px 0;
+    border-radius:10px; position:relative; z-index:1;
   }
+
   .bk-team {
     display:flex; align-items:center; gap:8px; padding:8px 10px;
     cursor:pointer; font-size:13px; color:var(--silver-l);
     border-left:3px solid transparent; transition:background 0.15s, color 0.15s;
-    user-select:none;
+    user-select:none; position:relative;
   }
+  .bk-team:first-child { border-radius:9px 9px 0 0; }
+  .bk-team:last-child  { border-radius:0 0 9px 9px; }
   .bk-team:hover { background:rgba(37,99,235,0.12); color:var(--white); }
   .bk-team + .bk-team { border-top:1px solid rgba(148,163,184,0.08); }
   .bk-team.win {
@@ -551,12 +569,49 @@ const CSS = `
     color:var(--gold-l); font-weight:600;
     animation:bkWin 0.32s ease;
   }
-  .bk-team.lose { opacity:0.42; }
+  .bk-team.lose { color:var(--silver); }
+  .bk-team.lose .bk-flag { filter:grayscale(0.4); opacity:0.55; }
+  .bk-team.lose .bk-name { opacity:0.7; }
   .bk-team.empty { opacity:0.3; font-style:italic; cursor:default; }
   .bk-team:not(.empty):not(.win) { animation:bkAppear 0.4s cubic-bezier(0.2,0.8,0.2,1) both; }
   .bk-team .bk-flag { font-size:17px; line-height:1; flex-shrink:0; }
   .bk-team .bk-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .bk-readonly .bk-team { cursor:default; }
+
+  /* ── Conectores: una línea sale de CADA equipo y se fusiona al centro del partido ── */
+  .bk-round:not(:last-of-type) .bk-team:not(.empty)::after {
+    content:''; position:absolute; left:100%; width:var(--tl); height:50%;
+    pointer-events:none; z-index:0;
+  }
+  .bk-round:not(:last-of-type) .bk-team:not(.empty):first-child::after {
+    top:50%; border-top:2px solid var(--bk-line); border-right:2px solid var(--bk-line);
+  }
+  .bk-round:not(:last-of-type) .bk-team:not(.empty):last-child::after {
+    bottom:50%; border-bottom:2px solid var(--bk-line); border-right:2px solid var(--bk-line);
+  }
+  /* Tramo desde la fusión hacia la siguiente columna (incluye el codo vertical del par).
+     Se solapa 3px a la izquierda (rellena la esquina con la línea del equipo) y 2px hacia
+     abajo (rellena la unión vertical en el punto medio del par). */
+  .bk-round:not(:last-of-type) .bk-cell::after {
+    content:''; position:absolute; left:calc(100% + var(--tl) - 2px); width:calc(var(--sp) + 2px); height:calc(50% + 2px);
+    pointer-events:none; z-index:0;
+  }
+  .bk-round:not(:last-of-type) .bk-cell:nth-child(odd)::after {
+    top:50%; border-top:2px solid var(--bk-line); border-right:2px solid var(--bk-line);
+  }
+  .bk-round:not(:last-of-type) .bk-cell:nth-child(even)::after {
+    bottom:50%; border-bottom:2px solid var(--bk-line); border-right:2px solid var(--bk-line);
+  }
+  /* Entrada horizontal al partido de la columna siguiente (se solapa 3px sobre el codo vertical) */
+  .bk-round:not(:first-of-type) .bk-cell::before {
+    content:''; position:absolute; right:100%; top:calc(50% - 1px);
+    width:calc(var(--sp) + 2px); height:2px; background:var(--bk-line);
+    pointer-events:none; z-index:0;
+  }
+  /* Camino del ganador iluminado en dorado hasta la siguiente columna */
+  .bk-team.win::after     { border-color:var(--bk-gold) !important; filter:drop-shadow(0 0 4px rgba(245,158,11,0.65)); z-index:2; }
+  .bk-cell.bk-won::after  { border-color:var(--bk-gold) !important; filter:drop-shadow(0 0 4px rgba(245,158,11,0.6)); z-index:2; }
+  .bk-cell.bk-lit::before { background:var(--bk-gold) !important; box-shadow:0 0 7px rgba(245,158,11,0.55); z-index:2; }
   @keyframes bkWin {
     0% { transform:scale(0.96); } 55% { transform:scale(1.03); } 100% { transform:scale(1); }
   }
@@ -583,6 +638,22 @@ const CSS = `
   @keyframes trophyFloat { 0%,100%{transform:translateY(0) rotate(-3deg);} 50%{transform:translateY(-7px) rotate(3deg);} }
   .confetti { position:absolute; top:-10px; font-size:14px; animation:confettiFall linear infinite; }
   @keyframes confettiFall { 0%{transform:translateY(-10px) rotate(0);opacity:1;} 100%{transform:translateY(260px) rotate(360deg);opacity:0;} }
+
+  /* ═══ PODIO ═══ */
+  .podium-wrap { margin-top:26px; }
+  .podium-title { font-family:'Oswald',sans-serif; font-size:13px; letter-spacing:3px; color:var(--silver); text-align:center; margin-bottom:14px; }
+  .podium { display:flex; align-items:flex-end; justify-content:center; gap:12px; max-width:520px; margin:0 auto; }
+  .pod { display:flex; flex-direction:column; align-items:center; flex:1; min-width:0; }
+  .pod-top { display:flex; flex-direction:column; align-items:center; gap:3px; margin-bottom:8px; }
+  .pod-medal { font-size:30px; line-height:1; }
+  .pod-flag { font-size:34px; line-height:1; }
+  .pod-name { font-family:'Oswald',sans-serif; font-weight:700; font-size:14px; text-align:center; color:var(--white); max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pod-empty { font-size:24px; color:var(--silver); opacity:0.5; }
+  .pod-base { width:100%; border-radius:12px 12px 0 0; display:flex; align-items:flex-start; justify-content:center; padding-top:10px; position:relative; overflow:hidden; }
+  .pod-rank { font-family:'Oswald',sans-serif; font-weight:700; font-size:24px; color:rgba(255,255,255,0.85); }
+  .pod-1 { height:120px; background:linear-gradient(180deg, rgba(245,158,11,0.32), rgba(245,158,11,0.05)); border:1.5px solid rgba(245,158,11,0.55); border-bottom:none; box-shadow:0 0 26px rgba(245,158,11,0.25); }
+  .pod-2 { height:88px; background:linear-gradient(180deg, rgba(203,213,225,0.26), rgba(203,213,225,0.04)); border:1.5px solid rgba(203,213,225,0.4); border-bottom:none; }
+  .pod-3 { height:64px; background:linear-gradient(180deg, rgba(205,127,50,0.3), rgba(205,127,50,0.05)); border:1.5px solid rgba(205,127,50,0.45); border-bottom:none; }
 
   /* ═══ MOBILE ═══ */
   @media (max-width: 640px) {
@@ -638,6 +709,17 @@ const CSS = `
     /* Section headers — stack vertically */
     .section-header { flex-direction:column !important; align-items:flex-start !important; gap:4px !important; }
     .section-header span { font-size:11px !important; }
+
+    /* Agregar participante — apilar en vertical */
+    .add-part-row { flex-direction:column !important; }
+    .add-part-row > * { width:100% !important; }
+    .add-part-pass { width:100% !important; }
+    .add-part-btn { padding:11px 0 !important; }
+
+    /* Podio — un poco más compacto */
+    .pod-name { font-size:12px !important; }
+    .pod-flag { font-size:28px !important; }
+    .pod-medal { font-size:24px !important; }
   }
 `;
 
@@ -713,7 +795,7 @@ const optsFor = (type) => type === "country" ? COUNTRY_OPTS : type === "gk" ? GK
 
 /* ═══════════════════════ APP ═══════════════════════ */
 const DOC_REF = doc(db, "polla2026", "data");
-const EMPTY   = { participants: [], predictions: {}, results: {}, passwords: {}, extras: {}, extrasResults: {}, brackets: {} };
+const EMPTY   = { participants: [], predictions: {}, results: {}, passwords: {}, extras: {}, extrasResults: {}, brackets: {}, icons: {} };
 
 export default function App() {
   const [data,   setData]   = useState(EMPTY);
@@ -739,6 +821,13 @@ export default function App() {
   const [deleteTarget,  setDeleteTarget] = useState("");
   const [deletePassVal, setDPVal]  = useState("");
   const [deletePassErr, setDPErr]  = useState(false);
+  // edición de perfil (nombre + ícono)
+  const [showEdit,   setShowEdit]   = useState(false);
+  const [editTarget, setEditTarget] = useState("");
+  const [editName,   setEditName]   = useState("");
+  const [editIcon,   setEditIcon]   = useState("");
+  const [editErr,    setEditErr]    = useState("");
+  const [pendingEdit, setPendingEdit] = useState(false);
   const [h2hMatch,   setH2h]   = useState(null);
   const [formTip,    setFormTip] = useState(null); // { team, idx }
   const tipTimer = useRef(null);
@@ -831,12 +920,63 @@ export default function App() {
   const submitPartLogin = () => {
     const stored = (data.passwords || {})[partLoginTarget];
     if (partLoginVal === stored) {
-      setAuthed(prev => new Set(prev).add(partLoginTarget));
-      setPerson(partLoginTarget);
+      const target = partLoginTarget;
+      setAuthed(prev => new Set(prev).add(target));
       setPartLogin(false); setPLVal("");
+      if (pendingEdit) { setPendingEdit(false); openEdit(target, true); }
+      else setPerson(target);
     } else {
       setPLErr(true);
     }
+  };
+
+  /* Edición de perfil: nombre + ícono (requiere contraseña / sesión) */
+  const openEdit = (name, skipAuth = false) => {
+    if (isAI(name)) return;
+    if (!skipAuth && !(authed.has(name) || adminMode)) {
+      setPartTarget(name); setPLVal(""); setPLErr(false);
+      setPendingEdit(true); setPartLogin(true);
+      return;
+    }
+    setEditTarget(name);
+    setEditName(displayName(name));
+    setEditIcon(iconFor(name) || "");
+    setEditErr("");
+    setShowEdit(true);
+  };
+
+  const saveProfile = () => {
+    const oldName = editTarget;
+    const newName = editName.trim();
+    if (!newName) { setEditErr("El nombre no puede estar vacío"); return; }
+    if (newName.length > 24) { setEditErr("Nombre muy largo (máx. 24)"); return; }
+    if (newName !== oldName) {
+      if (data.participants.includes(newName)) { setEditErr("Ese nombre ya existe"); return; }
+      if (isAI(newName)) { setEditErr("Ese nombre está reservado"); return; }
+    }
+    persist(s => {
+      const move = (obj) => {
+        const n = { ...(obj || {}) };
+        if (oldName !== newName && (oldName in n)) { n[newName] = n[oldName]; delete n[oldName]; }
+        return n;
+      };
+      const icons = move(s.icons || {});
+      if (editIcon) icons[newName] = editIcon; else delete icons[newName];
+      return {
+        ...s,
+        participants: s.participants.map(x => x === oldName ? newName : x),
+        predictions: move(s.predictions),
+        passwords:   move(s.passwords),
+        extras:      move(s.extras),
+        brackets:    move(s.brackets),
+        icons,
+      };
+    });
+    if (oldName !== newName) {
+      setAuthed(prev => { const nx = new Set(prev); if (nx.has(oldName)) { nx.delete(oldName); nx.add(newName); } return nx; });
+      setPerson(p => (p === oldName ? newName : p));
+    }
+    setShowEdit(false); setEditErr("");
   };
 
   const setPred = (matchId, side, val) => {
@@ -885,6 +1025,23 @@ export default function App() {
     setFormTip({ ...payload, x: r.left + r.width / 2, y: r.top });
   };
 
+  /* Nombre e ícono de visualización (el emoji inicial se vuelve ícono) */
+  const displayName = (name) => splitName(name).clean;
+  const iconFor = (name) => (data.icons || {})[name] || splitName(name).icon || null;
+  const avatarFor = (name) => iconFor(name) || displayName(name)[0]?.toUpperCase() || "?";
+
+  /* Chips de participantes (reutilizado en varias pestañas) */
+  const renderPartChips = () => data.participants.map(p => {
+    const ic = iconFor(p);
+    return (
+      <button key={p} className={`part-chip${person === p ? " active" : ""}`} onClick={() => selectPerson(p)}>
+        {ic && <span style={{ marginRight: 5 }}>{ic}</span>}{displayName(p)}
+        {!isAI(p) && !authed.has(p) && !adminMode && <span style={{ fontSize: 11, opacity: 0.6, marginLeft: 4 }}>🔒</span>}
+        {isAI(p) && <span style={{ fontSize: 10, opacity: 0.7, marginLeft: 4 }}>🤖</span>}
+      </button>
+    );
+  });
+
   const renderForm = (team, right) => {
     const f = (data.form || {})[team];
     if (!f || !f.length) return null;
@@ -923,9 +1080,6 @@ export default function App() {
             </div>
           </div>
           <div className="header-btns" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <span className="btn btn-green" style={{ cursor: "default" }} title="Los resultados se actualizan solos cada madrugada (3am Chile)">
-              🔄 Auto 3am
-            </span>
             {adminMode ? (
               <button className="btn" style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.4)", color: "var(--gold)" }} onClick={() => setAdmin(false)}>
                 🔧 ADMIN ACTIVO
@@ -953,7 +1107,6 @@ export default function App() {
               <button className="btn btn-primary" style={{ flex: 1, padding: "11px 0" }} onClick={() => { if (loginVal === ADMIN_PWD) { setAdmin(true); setLogin(false); setLVal(""); } else setLErr(true); }}>Entrar</button>
               <button className="btn btn-ghost" onClick={() => { setLogin(false); setLVal(""); setLErr(false); }}>Cancelar</button>
             </div>
-            <p style={{ fontSize: 11, color: "var(--silver)" }}>Contraseña: <span style={{ color: "var(--gold)" }}>mundial2026</span></p>
           </div>
         </div>
       )}
@@ -996,7 +1149,47 @@ export default function App() {
             {partLoginErr && <p style={{ fontSize: 12, color: "var(--rose)", marginBottom: 10 }}>Contraseña incorrecta.</p>}
             <div style={{ display: "flex", gap: 8 }}>
               <button className="btn btn-primary" style={{ flex: 1, padding: "11px 0" }} onClick={submitPartLogin}>Entrar</button>
-              <button className="btn btn-ghost" onClick={() => { setPartLogin(false); setPLVal(""); setPLErr(false); }}>Cancelar</button>
+              <button className="btn btn-ghost" onClick={() => { setPartLogin(false); setPLVal(""); setPLErr(false); setPendingEdit(false); }}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ EDIT PROFILE MODAL ══ */}
+      {showEdit && (
+        <div className="modal" onClick={e => e.target === e.currentTarget && setShowEdit(false)}>
+          <div className="glass" style={{ borderRadius: 16, padding: 28, width: 380, maxWidth: "92vw" }}>
+            <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 22, fontWeight: 600, letterSpacing: 2, marginBottom: 6 }}>EDITAR PERFIL</div>
+            <div style={{ fontSize: 13, color: "var(--silver)", marginBottom: 18 }}>Cambia tu nombre y elige un ícono.</div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+              <div style={{ width: 54, height: 54, borderRadius: 27, background: "rgba(37,99,235,0.2)", border: "2px solid rgba(37,99,235,0.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: editIcon ? 28 : 22, fontFamily: "'Oswald',sans-serif", fontWeight: 700, flexShrink: 0 }}>
+                {editIcon || editName.trim()[0]?.toUpperCase() || "?"}
+              </div>
+              <input type="text" placeholder="Nombre..." value={editName} autoFocus maxLength={24}
+                onChange={e => { setEditName(e.target.value); setEditErr(""); }}
+                onKeyDown={e => e.key === "Enter" && saveProfile()}
+                style={{ flex: 1, padding: "11px 14px", background: "rgba(6,14,38,0.8)", border: `1.5px solid ${editErr ? "var(--rose)" : "rgba(148,163,184,0.2)"}`, borderRadius: 10, color: "var(--white)", fontSize: 15, outline: "none", fontFamily: "'DM Sans',sans-serif" }}
+              />
+            </div>
+
+            <p style={{ fontSize: 11, letterSpacing: 1.5, color: "var(--silver)", marginBottom: 8, fontWeight: 500 }}>ÍCONO</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 6, marginBottom: 16, maxHeight: 150, overflowY: "auto" }}>
+              {AVATAR_ICONS.map(ic => (
+                <button key={ic} onClick={() => setEditIcon(ic === editIcon ? "" : ic)}
+                  style={{ aspectRatio: "1", fontSize: 20, borderRadius: 9, cursor: "pointer",
+                    border: `1.5px solid ${editIcon === ic ? "var(--blue-l)" : "rgba(148,163,184,0.15)"}`,
+                    background: editIcon === ic ? "rgba(37,99,235,0.25)" : "rgba(15,31,66,0.5)",
+                    boxShadow: editIcon === ic ? "0 0 10px rgba(37,99,235,0.4)" : "none" }}>
+                  {ic}
+                </button>
+              ))}
+            </div>
+
+            {editErr && <p style={{ fontSize: 12, color: "var(--rose)", marginBottom: 10 }}>{editErr}</p>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn btn-primary" style={{ flex: 1, padding: "11px 0" }} onClick={saveProfile}>Guardar</button>
+              <button className="btn btn-ghost" onClick={() => { setShowEdit(false); setEditErr(""); }}>Cancelar</button>
             </div>
           </div>
         </div>
@@ -1104,6 +1297,9 @@ export default function App() {
                 <span className="countdown-live">🔴 ¡EL MUNDIAL ESTÁ EN MARCHA!</span>
               )}
             </div>
+            <p style={{ fontSize: 11.5, color: "var(--silver)", textAlign: "center", letterSpacing: 0.3, marginTop: 10 }}>
+              🌅 Los resultados de cada jornada se actualizan a la mañana del día siguiente.
+            </p>
           </div>
         );
       })()}
@@ -1119,11 +1315,7 @@ export default function App() {
               <p style={{ fontSize: 11, letterSpacing: 2, color: "var(--silver)", marginBottom: 10, fontWeight: 500 }}>SELECCIONAR PARTICIPANTE</p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: person ? 10 : 0 }}>
                 {!data.participants.length && <span style={{ fontSize: 14, color: "var(--silver)" }}>Agrega participantes en la pestaña 👥 primero</span>}
-                {data.participants.map(p => (
-                  <button key={p} className={`part-chip${person === p ? " active" : ""}`} onClick={() => selectPerson(p)}>
-                    {p} {!isAI(p) && !authed.has(p) && !adminMode && <span style={{ fontSize: 11, opacity: 0.6 }}>🔒</span>}{isAI(p) && <span style={{ fontSize: 10, opacity: 0.7 }}>🤖</span>}
-                  </button>
-                ))}
+                {renderPartChips()}
               </div>
               {person && (
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1168,7 +1360,7 @@ export default function App() {
               <div className="match-col-headers" style={{ display: "grid", gridTemplateColumns: "56px 1fr 130px 1fr 96px 52px", gap: 8, padding: "8px 18px", borderBottom: "1px solid rgba(148,163,184,0.08)", fontSize: 10, color: "var(--silver)", letterSpacing: 1.5, fontWeight: 600 }}>
                 <div>FECHA</div>
                 <div>LOCAL</div>
-                <div style={{ textAlign: "center" }}>{person ? `PRED. ${person.split(" ")[0].toUpperCase()}` : "PREDICCIÓN"}</div>
+                <div style={{ textAlign: "center" }}>{person ? `PRED. ${displayName(person).split(" ")[0].toUpperCase()}` : "PREDICCIÓN"}</div>
                 <div style={{ textAlign: "right" }}>VISITANTE</div>
                 <div style={{ textAlign: "center" }}>RESULTADO</div>
                 <div style={{ textAlign: "center" }}>PTS</div>
@@ -1198,15 +1390,19 @@ export default function App() {
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                      <input type="number" min="0" max="30" className="score-inp" value={pred.h}
-                        onChange={e => setPred(m.id, "h", e.target.value)} disabled={!person || locked}
-                        style={{ borderColor: p === 3 ? "var(--gold)" : p === 1 ? "var(--emerald)" : p === 0 ? "var(--rose)" : "rgba(148,163,184,0.2)" }}
-                      />
-                      <span style={{ color: "var(--silver)", fontFamily: "'Oswald',sans-serif", fontSize: 16 }}>—</span>
-                      <input type="number" min="0" max="30" className="score-inp" value={pred.a}
-                        onChange={e => setPred(m.id, "a", e.target.value)} disabled={!person || locked}
-                        style={{ borderColor: p === 3 ? "var(--gold)" : p === 1 ? "var(--emerald)" : p === 0 ? "var(--rose)" : "rgba(148,163,184,0.2)" }}
-                      />
+                      {isAI(person) && !adminMode ? (
+                        <span style={{ fontSize: 12, color: "var(--silver)", letterSpacing: 0.5 }} title="Las predicciones de las IA están ocultas">🔒 oculto</span>
+                      ) : (<>
+                        <input type="number" min="0" max="30" className="score-inp" value={pred.h}
+                          onChange={e => setPred(m.id, "h", e.target.value)} disabled={!person || locked}
+                          style={{ borderColor: p === 3 ? "var(--gold)" : p === 1 ? "var(--emerald)" : p === 0 ? "var(--rose)" : "rgba(148,163,184,0.2)" }}
+                        />
+                        <span style={{ color: "var(--silver)", fontFamily: "'Oswald',sans-serif", fontSize: 16 }}>—</span>
+                        <input type="number" min="0" max="30" className="score-inp" value={pred.a}
+                          onChange={e => setPred(m.id, "a", e.target.value)} disabled={!person || locked}
+                          style={{ borderColor: p === 3 ? "var(--gold)" : p === 1 ? "var(--emerald)" : p === 0 ? "var(--rose)" : "rgba(148,163,184,0.2)" }}
+                        />
+                      </>)}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10 }}>
                       <div style={{ minWidth: 0, textAlign: "right" }}>
@@ -1267,6 +1463,7 @@ export default function App() {
         {tab === "premios" && (() => {
           const tournamentStarted = todayStr() >= TOURNAMENT_START;
           const canEdit = !isAI(person) && (adminMode || (!!person && authed.has(person) && !tournamentStarted));
+          const hideExtras = isAI(person) && !adminMode;
           const myExtras = (data.extras || {})[person] || {};
           const er = data.extrasResults || {};
           return (
@@ -1293,7 +1490,12 @@ export default function App() {
               </div>
 
               {/* Cards */}
-              {person && (
+              {person && hideExtras && (
+                <div className="glass" style={{ borderRadius: 14, padding: "28px", textAlign: "center", color: "var(--silver)", fontSize: 14 }}>
+                  🔒 Las predicciones de premios de las IA están ocultas.
+                </div>
+              )}
+              {person && !hideExtras && (
                 <div className="extras-grid">
                   {EXTRA_CATS.map(c => {
                     const pick = myExtras[c.id] || "";
@@ -1379,7 +1581,9 @@ export default function App() {
                   <div key={name} className="lb-card" style={{ background: isTop ? "rgba(245,158,11,0.06)" : "transparent" }}>
                     <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: i < 3 ? 22 : 16, color: i < 3 ? "var(--gold-l)" : "var(--silver)", fontWeight: 700 }}>{medal}</div>
                     <div>
-                      <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 17, fontWeight: 600, color: isTop ? "var(--gold-l)" : "var(--white)", letterSpacing: 0.5 }}>{name}</div>
+                      <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 17, fontWeight: 600, color: isTop ? "var(--gold-l)" : "var(--white)", letterSpacing: 0.5 }}>
+                        {iconFor(name) && <span style={{ marginRight: 6 }}>{iconFor(name)}</span>}{displayName(name)}
+                      </div>
                       {played > 0 && <div style={{ fontSize: 11, color: "var(--silver)", marginTop: 1 }}>{played} partidos con resultado</div>}
                     </div>
                     <div style={{ textAlign: "center", color: "var(--silver)", fontSize: 14 }}>{played}</div>
@@ -1453,11 +1657,22 @@ export default function App() {
         {/* ════ ELIMINACIÓN (bracket) ════ */}
         {tab === "bracket" && (() => {
           const canEdit = !!person && !isAI(person) && (adminMode || authed.has(person));
+          const hideBracket = isAI(person) && !adminMode;
           const predForPerson = person ? (data.predictions[person] || {}) : {};
           const seeds = getQualified(predForPerson);
           const picks = person ? ((data.brackets || {})[person] || {}) : {};
           const { roundsData, champion } = buildBracket(seeds, picks);
           const confettiBits = ["🎉","🎊","⚽","✨","🏅","🎉","⭐","🎊"];
+          // Podio: campeón, subcampeón y partido por el 3er lugar
+          const sfRound = roundsData.find(r => r.id === "SF");
+          const fRound  = roundsData.find(r => r.id === "F");
+          const fMatch  = fRound?.matches[0];
+          const runnerUp = (fMatch && fMatch.w) ? (fMatch.a === fMatch.w ? fMatch.b : fMatch.a) : null;
+          const sfLosers = sfRound ? sfRound.matches.map(m => (m.w ? (m.a === m.w ? m.b : m.a) : null)) : [null, null];
+          const tpReady = !!(sfLosers[0] && sfLosers[1]);
+          const tpPick  = picks["TP-0"];
+          const third   = (tpReady && (tpPick === sfLosers[0] || tpPick === sfLosers[1])) ? tpPick : null;
+          const fourth  = third ? (third === sfLosers[0] ? sfLosers[1] : sfLosers[0]) : null;
           return (
             <div>
               <div className="section-header" style={{ marginBottom: 6, display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
@@ -1473,64 +1688,104 @@ export default function App() {
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                   <span style={{ fontSize: 11, letterSpacing: 2, color: "var(--silver)", fontWeight: 500, marginRight: 4 }}>PARTICIPANTE</span>
                   {!data.participants.length && <span style={{ fontSize: 14, color: "var(--silver)" }}>Agrega participantes primero</span>}
-                  {data.participants.map(p => (
-                    <button key={p} className={`part-chip${person === p ? " active" : ""}`} onClick={() => selectPerson(p)}>
-                      {p} {!isAI(p) && !authed.has(p) && !adminMode && <span style={{ fontSize: 11, opacity: 0.6 }}>🔒</span>}{isAI(p) && <span style={{ fontSize: 10, opacity: 0.7 }}>🤖</span>}
-                    </button>
-                  ))}
+                  {renderPartChips()}
                   {canEdit && <button className="btn btn-ghost" style={{ marginLeft: "auto" }} onClick={resetBracket}>↺ Reiniciar</button>}
                 </div>
               </div>
 
               {!person ? (
                 <div style={{ padding: "36px", textAlign: "center", color: "var(--silver)", fontSize: 14 }}>Selecciona un participante para ver su cuadro</div>
-              ) : (
+              ) : hideBracket ? (
+                <div className="glass" style={{ borderRadius: 14, padding: "36px", textAlign: "center", color: "var(--silver)", fontSize: 14 }}>🔒 El cuadro de eliminación de las IA está oculto.</div>
+              ) : (<>
                 <div className="bracket-scroll">
                   <div className={`bracket${canEdit ? "" : " bk-readonly"}`}>
                     {roundsData.map((R) => (
                       <div key={R.id} className="bk-round">
                         <div className="bk-round-head">{R.label}</div>
-                        {R.matches.map((m) => {
-                          const renderTeam = (t, side) => {
-                            if (!t) return <div key={`${R.id}-${m.idx}-${side}-empty`} className="bk-team empty"><span className="bk-flag">⬚</span><span className="bk-name">Por definir</span></div>;
-                            const isWin = m.w === t;
-                            const cls = `bk-team${isWin ? " win" : ""}${m.w && m.w !== t ? " lose" : ""}`;
+                        <div className="bk-col">
+                          {R.matches.map((m) => {
+                            const renderTeam = (t, side) => {
+                              if (!t) return <div key={`${R.id}-${m.idx}-${side}-empty`} className="bk-team empty"><span className="bk-flag">⬚</span><span className="bk-name">Por definir</span></div>;
+                              const isWin = m.w === t;
+                              const cls = `bk-team${isWin ? " win" : ""}${m.w && m.w !== t ? " lose" : ""}`;
+                              return (
+                                <div key={`${R.id}-${m.idx}-${t}`} className={cls} onClick={() => canEdit && setBracketPick(`${R.id}-${m.idx}`, t)}>
+                                  <span className="bk-flag">{FL[t] || "🏳️"}</span>
+                                  <span className="bk-name">{t}</span>
+                                </div>
+                              );
+                            };
+                            const cellCls = `bk-cell${m.w ? " bk-won" : ""}${(m.a || m.b) ? " bk-lit" : ""}`;
                             return (
-                              <div key={`${R.id}-${m.idx}-${t}`} className={cls} onClick={() => canEdit && setBracketPick(`${R.id}-${m.idx}`, t)}>
-                                <span className="bk-flag">{FL[t] || "🏳️"}</span>
-                                <span className="bk-name">{t}</span>
+                              <div key={m.idx} className={cellCls}>
+                                <div className="bk-match">
+                                  {renderTeam(m.a, "a")}{renderTeam(m.b, "b")}
+                                </div>
                               </div>
                             );
-                          };
-                          return (
-                            <div key={m.idx} className="bk-match">
-                              {renderTeam(m.a, "a")}{renderTeam(m.b, "b")}
-                            </div>
-                          );
-                        })}
+                          })}
+                        </div>
                       </div>
                     ))}
-                    {/* Champion */}
-                    <div className="champ-col">
-                      <div className="champ-card" key={champion || "none"}>
-                        {champion && confettiBits.map((c, i) => (
-                          <span key={i} className="confetti" style={{ left: `${8 + i * 11}%`, animationDuration: `${2 + (i % 4) * 0.6}s`, animationDelay: `${(i % 5) * 0.3}s` }}>{c}</span>
-                        ))}
-                        <div className="champ-trophy">🏆</div>
-                        <div className="champ-label">CAMPEÓN</div>
-                        {champion ? (
-                          <>
-                            <div className="champ-flag">{FL[champion] || "🏳️"}</div>
-                            <div className="champ-name">{champion}</div>
-                          </>
-                        ) : (
-                          <div style={{ fontSize: 13, color: "var(--silver)" }}>Completa el cuadro</div>
-                        )}
-                      </div>
-                    </div>
                   </div>
                 </div>
-              )}
+
+                {/* Partido por el 3er lugar */}
+                <div style={{ marginTop: 22, maxWidth: 360 }}>
+                  <p style={{ fontSize: 11, letterSpacing: 2, color: "var(--silver)", fontWeight: 600, marginBottom: 8 }}>🥉 PARTIDO POR EL 3ER LUGAR</p>
+                  {tpReady ? (
+                    <div className={`bk-match${canEdit ? "" : " bk-readonly"}`} style={{ maxWidth: 360 }}>
+                      {[sfLosers[0], sfLosers[1]].map((t) => {
+                        const isWin = third === t;
+                        const cls = `bk-team${isWin ? " win" : ""}${third && third !== t ? " lose" : ""}`;
+                        return (
+                          <div key={t} className={cls} onClick={() => canEdit && setBracketPick("TP-0", t)}>
+                            <span className="bk-flag">{FL[t] || "🏳️"}</span>
+                            <span className="bk-name">{t}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div style={{ padding: "14px 16px", borderRadius: 10, background: "rgba(15,31,66,0.5)", border: "1px solid var(--glass-b)", fontSize: 12.5, color: "var(--silver)" }}>
+                      Define las dos semifinales para elegir el 3er lugar.
+                    </div>
+                  )}
+                </div>
+
+                {/* Podio */}
+                <div className="podium-wrap">
+                  <div className="podium-title">🏅 PODIO</div>
+                  <div className="podium">
+                    {[
+                      { rank: 2, team: runnerUp, medal: "🥈", cls: "pod-2" },
+                      { rank: 1, team: champion, medal: "🏆", cls: "pod-1" },
+                      { rank: 3, team: third,    medal: "🥉", cls: "pod-3" },
+                    ].map(({ rank, team, medal, cls }) => (
+                      <div key={rank} className="pod">
+                        <div className="pod-top">
+                          <div className="pod-medal">{medal}</div>
+                          {team ? (
+                            <>
+                              <div className="pod-flag">{FL[team] || "🏳️"}</div>
+                              <div className="pod-name">{team}</div>
+                            </>
+                          ) : (
+                            <div className="pod-empty">—</div>
+                          )}
+                        </div>
+                        <div className={`pod-base ${cls}`}>
+                          {rank === 1 && team && confettiBits.map((c, i) => (
+                            <span key={i} className="confetti" style={{ left: `${6 + i * 11}%`, animationDuration: `${2 + (i % 4) * 0.6}s`, animationDelay: `${(i % 5) * 0.3}s` }}>{c}</span>
+                          ))}
+                          <span className="pod-rank">{rank}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>)}
             </div>
           );
         })()}
@@ -1541,18 +1796,19 @@ export default function App() {
             <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 30, fontWeight: 700, letterSpacing: 3, marginBottom: 20 }}>PARTICIPANTES</h2>
             <div className="glass" style={{ borderRadius: 14, padding: "18px 20px", marginBottom: 16 }}>
               <p style={{ fontSize: 11, color: "var(--silver)", letterSpacing: 1.5, marginBottom: 10, fontWeight: 500 }}>AGREGAR PARTICIPANTE</p>
-              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <div className="add-part-row" style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                 <input type="text" placeholder="Nombre..." value={newName}
                   onChange={e => { setNName(e.target.value); setNErr(""); }}
                   onKeyDown={e => e.key === "Enter" && addParticipant()} maxLength={24}
-                  style={{ flex: 1, padding: "10px 14px", background: "rgba(6,14,38,0.7)", border: `1.5px solid ${nameErr ? "var(--rose)" : "rgba(148,163,184,0.18)"}`, borderRadius: 10, color: "var(--white)", fontSize: 14, outline: "none", fontFamily: "'DM Sans',sans-serif" }}
+                  style={{ flex: 1, minWidth: 0, padding: "10px 14px", background: "rgba(6,14,38,0.7)", border: `1.5px solid ${nameErr ? "var(--rose)" : "rgba(148,163,184,0.18)"}`, borderRadius: 10, color: "var(--white)", fontSize: 14, outline: "none", fontFamily: "'DM Sans',sans-serif" }}
                 />
                 <input type="password" placeholder="Contraseña..." value={newPass}
                   onChange={e => { setNPass(e.target.value); setNErr(""); }}
                   onKeyDown={e => e.key === "Enter" && addParticipant()} maxLength={32}
+                  className="add-part-pass"
                   style={{ width: 140, padding: "10px 14px", background: "rgba(6,14,38,0.7)", border: `1.5px solid ${nameErr ? "var(--rose)" : "rgba(148,163,184,0.18)"}`, borderRadius: 10, color: "var(--white)", fontSize: 14, outline: "none", fontFamily: "'DM Sans',sans-serif" }}
                 />
-                <button className="btn btn-primary" onClick={addParticipant} disabled={data.participants.length >= 16}>+ Agregar</button>
+                <button className="btn btn-primary add-part-btn" onClick={addParticipant} disabled={data.participants.length >= 16}>+ Agregar</button>
               </div>
               {nameErr && <p style={{ fontSize: 12, color: "var(--rose)", marginTop: 7 }}>{nameErr}</p>}
               <p style={{ fontSize: 11, color: "var(--silver)", marginTop: 8 }}>{data.participants.length}/16 participantes (incluye 2 IA 🤖)</p>
@@ -1569,32 +1825,35 @@ export default function App() {
               const filled = Object.values(MATCHES).flat().filter(m => { const p = data.predictions[name]?.[m.id]; return p?.h !== "" && p?.h != null && p?.a !== "" && p?.a != null; }).length;
               return (
                 <div key={name} className="glass lift" style={{ borderRadius: 12, padding: "14px 18px", marginBottom: 10, display: "flex", alignItems: "center", gap: 14 }}>
-                  <div style={{ width: 42, height: 42, borderRadius: 21, background: "rgba(37,99,235,0.2)", border: "2px solid rgba(37,99,235,0.35)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald',sans-serif", fontSize: 18, fontWeight: 700, flexShrink: 0 }}>
-                    {name[0].toUpperCase()}
+                  <div style={{ width: 42, height: 42, borderRadius: 21, background: "rgba(37,99,235,0.2)", border: "2px solid rgba(37,99,235,0.35)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald',sans-serif", fontSize: iconFor(name) ? 22 : 18, fontWeight: 700, flexShrink: 0 }}>
+                    {avatarFor(name)}
                   </div>
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 16, fontWeight: 600, letterSpacing: 0.5, marginBottom: 3 }}>
-                      {name} {isAI(name) && <span style={{ fontSize: 10, color: "var(--blue-xl)", fontWeight: 500, letterSpacing: 1 }}>· IA</span>}
+                      {displayName(name)} {isAI(name) && <span style={{ fontSize: 10, color: "var(--blue-xl)", fontWeight: 500, letterSpacing: 1 }}>· IA</span>}
                     </div>
                     <div style={{ fontSize: 11, color: "var(--silver)", marginBottom: 5 }}>{filled}/72 predicciones · <span style={{ color: "var(--gold)", fontWeight: 600 }}>{pts} pts</span></div>
                     <div className="prog-track">
                       <div className="prog-fill" style={{ width: `${(filled / 72) * 100}%`, background: filled === 72 ? "var(--emerald)" : "var(--blue-l)" }} />
                     </div>
                   </div>
-                  {isAI(name)
-                    ? <span style={{ fontSize: 18, flexShrink: 0 }} title="Participante IA (no editable)">🤖</span>
-                    : <button onClick={() => requestDelete(name)} style={{ padding: "5px 10px", background: "rgba(244,63,94,0.1)", border: "1px solid rgba(244,63,94,0.3)", color: "var(--rose)", borderRadius: 7, cursor: "pointer", fontSize: 12, flexShrink: 0 }}>✕</button>}
+                  {isAI(name) ? (
+                    <span style={{ fontSize: 18, flexShrink: 0 }} title="Participante IA (no editable)">🤖</span>
+                  ) : (
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                      <button onClick={() => openEdit(name)} title="Editar perfil (requiere tu contraseña)" style={{ padding: "5px 10px", background: "rgba(37,99,235,0.12)", border: "1px solid rgba(59,130,246,0.35)", color: "var(--blue-xl)", borderRadius: 7, cursor: "pointer", fontSize: 12 }}>✏️</button>
+                      <button onClick={() => requestDelete(name)} title="Eliminar" style={{ padding: "5px 10px", background: "rgba(244,63,94,0.1)", border: "1px solid rgba(244,63,94,0.3)", color: "var(--rose)", borderRadius: 7, cursor: "pointer", fontSize: 12 }}>✕</button>
+                    </div>
+                  )}
                 </div>
               );
             })}
 
             <div className="glass" style={{ borderRadius: 14, padding: "20px", marginTop: 20 }}>
-              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 16, fontWeight: 600, letterSpacing: 2, color: "var(--blue-xl)", marginBottom: 12 }}>🔗 CÓMO COMPARTIR</p>
+              <p style={{ fontFamily: "'Oswald',sans-serif", fontSize: 16, fontWeight: 600, letterSpacing: 2, color: "var(--blue-xl)", marginBottom: 12 }}>ℹ️ CÓMO FUNCIONA</p>
               <div style={{ fontSize: 13, color: "var(--silver)", lineHeight: 1.8 }}>
-                <p style={{ marginBottom: 8 }}>Una vez desplegada en Vercel, todos los participantes entran al mismo link y cada uno selecciona su nombre.</p>
-                <p style={{ marginBottom: 8 }}><strong style={{ color: "var(--white)" }}>Importante:</strong> cada persona usa su propio dispositivo/navegador — los datos se guardan localmente. Para datos compartidos en tiempo real necesitarás Firebase (Paso 3).</p>
-                <p>El primer partido se juega el <strong style={{ color: "var(--gold)" }}>11 de junio</strong>. Desde esa fecha las predicciones del Grupo A quedan bloqueadas automáticamente.</p>
-                <p style={{ marginTop: 8 }}>Admin: <span style={{ color: "var(--gold)" }}>mundial2026</span></p>
+                <p style={{ marginBottom: 8 }}>Cada participante entra al mismo link y selecciona su nombre. Para editar tus predicciones necesitas tu contraseña.</p>
+                <p>El primer partido se juega el <strong style={{ color: "var(--gold)" }}>11 de junio</strong>. Desde esa fecha las predicciones de cada grupo quedan bloqueadas a medida que comienzan los partidos.</p>
               </div>
             </div>
           </div>
