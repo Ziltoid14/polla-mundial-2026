@@ -143,14 +143,13 @@ const getQualified = (predForPerson) => {
   return [...[...firsts].sort(rankPerf), ...[...seconds].sort(rankPerf), ...[...thirds].sort(rankPerf)].map(x => x.t);
 };
 
-// Construye todas las rondas a partir de los 32 sembrados y las elecciones del usuario
+// Construye todas las rondas a partir de los 32 sembrados y las elecciones del usuario.
+// Parte SIN ganadores: cada cruce avanza solo cuando el usuario elige un equipo.
 const buildBracket = (seeds, picks) => {
-  const seedIdx = (t) => { const i = seeds.indexOf(t); return i < 0 ? 999 : i; };
   const winnerOf = (rid, idx, a, b) => {
-    if (!a || !b) return a || b || null;
+    if (!a || !b) return null;            // falta algún equipo todavía
     const p = picks?.[`${rid}-${idx}`];
-    if (p === a || p === b) return p;
-    return seedIdx(a) <= seedIdx(b) ? a : b; // por defecto avanza el mejor sembrado
+    return (p === a || p === b) ? p : null; // null = aún no se elige
   };
   const roundsData = [];
   let prevWinners = null;
@@ -504,11 +503,16 @@ const CSS = `
   }
   .bk-team.lose { opacity:0.42; }
   .bk-team.empty { opacity:0.3; font-style:italic; cursor:default; }
+  .bk-team:not(.empty):not(.win) { animation:bkAppear 0.4s cubic-bezier(0.2,0.8,0.2,1) both; }
   .bk-team .bk-flag { font-size:17px; line-height:1; flex-shrink:0; }
   .bk-team .bk-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .bk-readonly .bk-team { cursor:default; }
   @keyframes bkWin {
     0% { transform:scale(0.96); } 55% { transform:scale(1.03); } 100% { transform:scale(1); }
+  }
+  @keyframes bkAppear {
+    0% { opacity:0; transform:translateX(-14px); }
+    100% { opacity:1; transform:translateX(0); }
   }
 
   /* Champion column */
@@ -1350,12 +1354,12 @@ export default function App() {
                       <div key={R.id} className="bk-round">
                         <div className="bk-round-head">{R.label}</div>
                         {R.matches.map((m) => {
-                          const renderTeam = (t) => {
-                            if (!t) return <div className="bk-team empty"><span className="bk-flag">⬚</span><span className="bk-name">Por definir</span></div>;
+                          const renderTeam = (t, side) => {
+                            if (!t) return <div key={`${R.id}-${m.idx}-${side}-empty`} className="bk-team empty"><span className="bk-flag">⬚</span><span className="bk-name">Por definir</span></div>;
                             const isWin = m.w === t;
                             const cls = `bk-team${isWin ? " win" : ""}${m.w && m.w !== t ? " lose" : ""}`;
                             return (
-                              <div className={cls} onClick={() => canEdit && setBracketPick(`${R.id}-${m.idx}`, t)}>
+                              <div key={`${R.id}-${m.idx}-${t}`} className={cls} onClick={() => canEdit && setBracketPick(`${R.id}-${m.idx}`, t)}>
                                 <span className="bk-flag">{FL[t] || "🏳️"}</span>
                                 <span className="bk-name">{t}</span>
                               </div>
@@ -1363,7 +1367,7 @@ export default function App() {
                           };
                           return (
                             <div key={m.idx} className="bk-match">
-                              {renderTeam(m.a)}{renderTeam(m.b)}
+                              {renderTeam(m.a, "a")}{renderTeam(m.b, "b")}
                             </div>
                           );
                         })}
