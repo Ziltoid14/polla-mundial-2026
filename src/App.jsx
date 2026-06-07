@@ -1,65 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 import { db } from "./firebase";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { GD, FL, MATCHES, GK } from "./tournament";
 
-/* ═══════════════════════ DATA ═══════════════════════ */
-const GD = {
-  A:["México","Sudáfrica","Corea","Chequia"],
-  B:["Canadá","Bosnia","Qatar","Suiza"],
-  C:["Brasil","Marruecos","Haití","Escocia"],
-  D:["EE.UU.","Paraguay","Australia","Turquía"],
-  E:["Alemania","Curazao","C.Marfil","Ecuador"],
-  F:["P.Bajos","Japón","Suecia","Túnez"],
-  G:["Bélgica","Egipto","Irán","N.Zelanda"],
-  H:["España","Cabo Verde","Arabia S.","Uruguay"],
-  I:["Francia","Senegal","Noruega","Irak"],
-  J:["Argentina","Argelia","Austria","Jordania"],
-  K:["Portugal","RD Congo","Uzbekistán","Colombia"],
-  L:["Inglaterra","Croacia","Ghana","Panamá"],
-};
-
-const FL = {
-  "México":"🇲🇽","Sudáfrica":"🇿🇦","Corea":"🇰🇷","Chequia":"🇨🇿",
-  "Canadá":"🇨🇦","Bosnia":"🇧🇦","Qatar":"🇶🇦","Suiza":"🇨🇭",
-  "Brasil":"🇧🇷","Marruecos":"🇲🇦","Haití":"🇭🇹","Escocia":"🏴󠁧󠁢󠁳󠁣󠁴󠁿",
-  "EE.UU.":"🇺🇸","Paraguay":"🇵🇾","Australia":"🇦🇺","Turquía":"🇹🇷",
-  "Alemania":"🇩🇪","Curazao":"🇨🇼","C.Marfil":"🇨🇮","Ecuador":"🇪🇨",
-  "P.Bajos":"🇳🇱","Japón":"🇯🇵","Suecia":"🇸🇪","Túnez":"🇹🇳",
-  "Bélgica":"🇧🇪","Egipto":"🇪🇬","Irán":"🇮🇷","N.Zelanda":"🇳🇿",
-  "España":"🇪🇸","Cabo Verde":"🇨🇻","Arabia S.":"🇸🇦","Uruguay":"🇺🇾",
-  "Francia":"🇫🇷","Senegal":"🇸🇳","Noruega":"🇳🇴","Irak":"🇮🇶",
-  "Argentina":"🇦🇷","Argelia":"🇩🇿","Austria":"🇦🇹","Jordania":"🇯🇴",
-  "Portugal":"🇵🇹","RD Congo":"🇨🇩","Uzbekistán":"🇺🇿","Colombia":"🇨🇴",
-  "Inglaterra":"🏴󠁧󠁢󠁥󠁮󠁧󠁿","Croacia":"🇭🇷","Ghana":"🇬🇭","Panamá":"🇵🇦",
-};
-
-const DATES = {
-  A01:"2026-06-11",A23:"2026-06-11",A02:"2026-06-18",A13:"2026-06-18",A03:"2026-06-24",A12:"2026-06-24",
-  B01:"2026-06-12",B23:"2026-06-13",B02:"2026-06-18",B13:"2026-06-18",B03:"2026-06-24",B12:"2026-06-24",
-  C01:"2026-06-13",C23:"2026-06-13",C02:"2026-06-19",C13:"2026-06-19",C03:"2026-06-24",C12:"2026-06-24",
-  D01:"2026-06-12",D23:"2026-06-13",D02:"2026-06-19",D13:"2026-06-19",D03:"2026-06-25",D12:"2026-06-25",
-  E01:"2026-06-14",E23:"2026-06-14",E02:"2026-06-20",E13:"2026-06-20",E03:"2026-06-25",E12:"2026-06-25",
-  F01:"2026-06-14",F23:"2026-06-14",F02:"2026-06-20",F13:"2026-06-20",F03:"2026-06-25",F12:"2026-06-25",
-  G01:"2026-06-15",G23:"2026-06-15",G02:"2026-06-21",G13:"2026-06-21",G03:"2026-06-26",G12:"2026-06-26",
-  H01:"2026-06-15",H23:"2026-06-15",H02:"2026-06-21",H13:"2026-06-21",H03:"2026-06-26",H12:"2026-06-26",
-  I01:"2026-06-16",I23:"2026-06-16",I03:"2026-06-22",I12:"2026-06-22",I02:"2026-06-27",I13:"2026-06-27",
-  J01:"2026-06-16",J23:"2026-06-16",J02:"2026-06-22",J13:"2026-06-22",J03:"2026-06-27",J12:"2026-06-27",
-  K01:"2026-06-17",K23:"2026-06-17",K02:"2026-06-23",K13:"2026-06-23",K03:"2026-06-27",K12:"2026-06-27",
-  L01:"2026-06-17",L23:"2026-06-17",L02:"2026-06-23",L13:"2026-06-23",L03:"2026-06-27",L12:"2026-06-27",
-};
-
-const MATCHES = {};
-Object.entries(GD).forEach(([g,ts]) => {
-  MATCHES[g]=[];
-  for(let i=0;i<4;i++) for(let j=i+1;j<4;j++){
-    const id=`${g}${i}${j}`;
-    MATCHES[g].push({id,home:ts[i],away:ts[j],date:DATES[id]||null});
-  }
-  MATCHES[g].sort((a,b)=>(a.date||"9999")<(b.date||"9999")?-1:1);
-});
-
-const GK = Object.keys(GD);
 const ADMIN_PWD = "mundial2026";
+
+/* Participantes manejados por la IA (no editables/borrables desde la web) */
+const AI_PARTICIPANTS = ["🔮 Oráculo", "🧠 Analista"];
+const isAI = (n) => AI_PARTICIPANTS.includes(n);
+
+/* Clave canónica para historial entre dos selecciones */
+const h2hKey = (a, b) => [a, b].sort((x, y) => x.localeCompare(y, "es")).join(" vs ");
 
 /* ═══════════════════════ UTILS ═══════════════════════ */
 const todayStr = () => new Date().toISOString().split("T")[0];
@@ -438,6 +389,28 @@ const CSS = `
   .st-row.top { background:rgba(37,99,235,0.08); }
   .st-row.div { border-top:1px dashed rgba(148,163,184,0.15); }
 
+  /* ═══ FORM (últimos 5) + H2H ═══ */
+  .form-row { display:flex; gap:3px; margin-top:4px; }
+  .form-row.right { justify-content:flex-end; }
+  .form-sq { width:13px; height:13px; border-radius:3px; flex-shrink:0; }
+  .form-W { background:var(--emerald); }
+  .form-D { background:var(--gold); }
+  .form-L { background:var(--rose); }
+  .h2h-btn {
+    width:22px; height:22px; border-radius:6px; margin-top:3px;
+    border:1px solid rgba(148,163,184,0.25); background:rgba(15,31,66,0.6);
+    color:var(--blue-xl); font-size:11px; cursor:pointer; line-height:1;
+    display:flex; align-items:center; justify-content:center;
+    transition:all 0.15s;
+  }
+  .h2h-btn:hover { border-color:var(--blue-l); background:rgba(37,99,235,0.18); color:#fff; }
+  .h2h-row {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:11px 14px; border-radius:10px; background:rgba(6,14,38,0.5);
+    border:1px solid rgba(148,163,184,0.1); margin-bottom:8px;
+  }
+  .h2h-score { font-family:'Oswald',sans-serif; font-size:18px; font-weight:700; color:var(--gold-l); letter-spacing:1px; }
+
   /* ═══ SEARCHABLE SELECT ═══ */
   .ss-wrap { position:relative; width:100%; }
   .ss-trigger {
@@ -702,8 +675,6 @@ export default function App() {
   const [newName,    setNName] = useState("");
   const [newPass,    setNPass] = useState("");
   const [nameErr,    setNErr]  = useState("");
-  const [fetching,   setFetch] = useState(false);
-  const [fetchMsg,   setFMsg]  = useState("");
   // session-only auth: which participants have entered their password this session
   const [authed,     setAuthed] = useState(new Set());
   const [showPartLogin,  setPartLogin]  = useState(false);
@@ -714,6 +685,7 @@ export default function App() {
   const [deleteTarget,  setDeleteTarget] = useState("");
   const [deletePassVal, setDPVal]  = useState("");
   const [deletePassErr, setDPErr]  = useState(false);
+  const [h2hMatch,   setH2h]   = useState(null);
 
   /* Firestore real-time sync */
   useEffect(() => {
@@ -743,7 +715,8 @@ export default function App() {
     if (!n) return;
     if (!pw) { setNErr("La contraseña no puede estar vacía"); return; }
     if (data.participants.includes(n)) { setNErr("Ese nombre ya existe"); return; }
-    if (data.participants.length >= 8) { setNErr("Máximo 8 participantes"); return; }
+    if (isAI(n)) { setNErr("Ese nombre está reservado"); return; }
+    if (data.participants.length >= 16) { setNErr("Máximo 16 participantes"); return; }
     persist(s => ({ ...s, participants: [...s.participants, n], passwords: { ...(s.passwords || {}), [n]: pw } }));
     setAuthed(prev => new Set(prev).add(n));
     if (!person) setPerson(n);
@@ -760,7 +733,7 @@ export default function App() {
   };
 
   const selectPerson = (name) => {
-    if (authed.has(name) || adminMode) {
+    if (isAI(name) || authed.has(name) || adminMode) {
       setPerson(name);
     } else {
       setPartTarget(name);
@@ -825,41 +798,6 @@ export default function App() {
 
   const switchGrp = (g) => { setGrp(g); setGrpKey(k => k + 1); };
 
-  /* Auto-fetch results via Anthropic API */
-  const autoFetch = async () => {
-    setFetch(true); setFMsg("");
-    try {
-      const today = todayStr();
-      const past = Object.values(MATCHES).flat().filter(m => m.date && m.date <= today);
-      if (!past.length) { setFMsg("⚽ El torneo aún no comienza"); setFetch(false); return; }
-      const list = past.map(m => `${m.id}|${m.home} vs ${m.away}|${m.date}`).join("\n");
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514", max_tokens: 2000,
-          tools: [{ type: "web_search_20250305", name: "web_search" }],
-          system: "Rastreador de resultados del Mundial 2026. Devuelve SOLO JSON, sin markdown.",
-          messages: [{ role: "user", content: `Busca resultados del Mundial FIFA 2026 fase de grupos para:\n\n${list}\n\nResponde SOLO:\n{"results":{"ID":{"h":GOLES_O_NULL,"a":GOLES_O_NULL}}}\nJugados=enteros. No jugados=null. 1er equipo=local(h), 2do=visitante(a).` }]
-        })
-      });
-      const apiData = await res.json();
-      const text = (apiData.content || []).filter(b => b.type === "text").map(b => b.text).join("");
-      const m = text.match(/\{[\s\S]*?"results"[\s\S]*?\}/);
-      if (m) {
-        const parsed = JSON.parse(m[0]);
-        if (parsed.results) {
-          let upd = 0;
-          const nr = { ...data.results };
-          Object.entries(parsed.results).forEach(([id, sc]) => { if (sc && sc.h != null && sc.a != null) { nr[id] = { h: +sc.h, a: +sc.a }; upd++; } });
-          persist(s => ({ ...s, results: nr }));
-          setFMsg(`✓ ${upd} resultado${upd !== 1 ? "s" : ""} actualizado${upd !== 1 ? "s" : ""}`);
-        } else setFMsg("⚠ Sin resultados aún");
-      } else setFMsg("⚠ No se pudo parsear");
-    } catch { setFMsg("✗ Error de conexión"); }
-    setFetch(false); setTimeout(() => setFMsg(""), 5000);
-  };
-
   if (!loaded) return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#03091a", gap: 16 }}>
       <div style={{ fontSize: 40 }}>⚽</div>
@@ -870,6 +808,16 @@ export default function App() {
   const sorted = [...data.participants].sort((a, b) => grandTotal(b, data) - grandTotal(a, data));
   const totalRes = Object.keys(data.results).filter(k => data.results[k]?.h != null && data.results[k]?.a != null).length;
   const filledP = person ? Object.values(MATCHES).flat().filter(m => { const p = data.predictions[person]?.[m.id]; return p?.h !== "" && p?.h != null && p?.a !== "" && p?.a != null; }).length : 0;
+
+  const renderForm = (team, right) => {
+    const f = (data.form || {})[team];
+    if (!f || !f.length) return null;
+    return (
+      <div className={`form-row${right ? " right" : ""}`}>
+        {f.slice(-5).map((r, i) => <span key={i} className={`form-sq form-${r}`} title={r} />)}
+      </div>
+    );
+  };
 
   return (
     <div className="stadium-bg" style={{ minHeight: "100vh", color: "var(--white)", fontFamily: "'DM Sans',sans-serif" }}>
@@ -887,10 +835,9 @@ export default function App() {
             </div>
           </div>
           <div className="header-btns" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <button className="btn btn-green" onClick={autoFetch} disabled={fetching}>
-              {fetching ? "🔄 Buscando..." : "🔄 Actualizar resultados"}
-            </button>
-            {fetchMsg && <span style={{ fontSize: 12, color: fetchMsg.startsWith("✓") ? "var(--emerald)" : "var(--rose)", fontWeight: 500 }}>{fetchMsg}</span>}
+            <span className="btn btn-green" style={{ cursor: "default" }} title="Los resultados se actualizan solos cada madrugada (3am Chile)">
+              🔄 Auto 3am
+            </span>
             {adminMode ? (
               <button className="btn" style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.4)", color: "var(--gold)" }} onClick={() => setAdmin(false)}>
                 🔧 ADMIN ACTIVO
@@ -967,6 +914,44 @@ export default function App() {
         </div>
       )}
 
+      {/* ══ H2H MODAL ══ */}
+      {h2hMatch && (() => {
+        const key = h2hKey(h2hMatch.home, h2hMatch.away);
+        const games = (data.h2h || {})[key] || [];
+        return (
+          <div className="modal" onClick={e => e.target === e.currentTarget && setH2h(null)}>
+            <div className="glass" style={{ borderRadius: 16, padding: 24, width: 380, maxWidth: "92vw" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginBottom: 4 }}>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 30 }}>{FL[h2hMatch.home] || "🏳️"}</div>
+                  <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 14, fontWeight: 600 }}>{h2hMatch.home}</div>
+                </div>
+                <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 14, color: "var(--silver)" }}>VS</span>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 30 }}>{FL[h2hMatch.away] || "🏳️"}</div>
+                  <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 14, fontWeight: 600 }}>{h2hMatch.away}</div>
+                </div>
+              </div>
+              <p style={{ fontSize: 11, letterSpacing: 2, color: "var(--silver)", textAlign: "center", margin: "10px 0 14px" }}>ÚLTIMOS ENFRENTAMIENTOS</p>
+              {games.length ? games.slice(0, 3).map((g, i) => (
+                <div key={i} className="h2h-row">
+                  <div>
+                    <div style={{ fontSize: 13, color: "var(--white)" }}>{key.replace(" vs ", " – ")}</div>
+                    <div style={{ fontSize: 11, color: "var(--silver)" }}>{g.date}{g.comp ? ` · ${g.comp}` : ""}</div>
+                  </div>
+                  <span className="h2h-score">{g.score}</span>
+                </div>
+              )) : (
+                <div style={{ padding: "20px", textAlign: "center", color: "var(--silver)", fontSize: 13 }}>
+                  Sin datos de historial aún.<br /><span style={{ fontSize: 11 }}>Se completará con la actualización automática.</span>
+                </div>
+              )}
+              <button className="btn btn-ghost" style={{ width: "100%", marginTop: 12 }} onClick={() => setH2h(null)}>Cerrar</button>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ══ TABS ══ */}
       <div style={{ background: "rgba(6,14,38,0.7)", backdropFilter: "blur(10px)", borderBottom: "1px solid rgba(148,163,184,0.08)", overflowX: "auto" }}>
         <div style={{ maxWidth: 1080, margin: "0 auto", display: "flex", padding: "0 12px" }}>
@@ -995,7 +980,7 @@ export default function App() {
                 {!data.participants.length && <span style={{ fontSize: 14, color: "var(--silver)" }}>Agrega participantes en la pestaña 👥 primero</span>}
                 {data.participants.map(p => (
                   <button key={p} className={`part-chip${person === p ? " active" : ""}`} onClick={() => selectPerson(p)}>
-                    {p} {!authed.has(p) && !adminMode && <span style={{ fontSize: 11, opacity: 0.6 }}>🔒</span>}
+                    {p} {!isAI(p) && !authed.has(p) && !adminMode && <span style={{ fontSize: 11, opacity: 0.6 }}>🔒</span>}{isAI(p) && <span style={{ fontSize: 10, opacity: 0.7 }}>🤖</span>}
                   </button>
                 ))}
               </div>
@@ -1062,10 +1047,14 @@ export default function App() {
                     <div>
                       <div style={{ fontSize: 12, color: dateLocked ? "var(--gold)" : "var(--silver)", fontWeight: 500 }}>{fmtDate(m.date)}</div>
                       {dateLocked && <div style={{ fontSize: 9, color: "var(--silver)", marginTop: 1, letterSpacing: 0.5 }}>🔒 CERRADO</div>}
+                      <button className="h2h-btn" title="Historial entre estos equipos" onClick={() => setH2h(m)}>ℹ️</button>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <div className={`flag-bubble${hasRes && res.h > res.a ? " active" : ""}`}>{FL[m.home] || "🏳️"}</div>
-                      <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 600, letterSpacing: 0.3 }}>{m.home}</span>
+                      <div style={{ minWidth: 0 }}>
+                        <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 600, letterSpacing: 0.3 }}>{m.home}</span>
+                        {renderForm(m.home, false)}
+                      </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                       <input type="number" min="0" max="30" className="score-inp" value={pred.h}
@@ -1079,7 +1068,10 @@ export default function App() {
                       />
                     </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10 }}>
-                      <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 600, textAlign: "right", letterSpacing: 0.3 }}>{m.away}</span>
+                      <div style={{ minWidth: 0, textAlign: "right" }}>
+                        <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 600, textAlign: "right", letterSpacing: 0.3 }}>{m.away}</span>
+                        {renderForm(m.away, true)}
+                      </div>
                       <div className={`flag-bubble${hasRes && res.a > res.h ? " active" : ""}`}>{FL[m.away] || "🏳️"}</div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
@@ -1133,7 +1125,7 @@ export default function App() {
         {/* ════ PREMIOS ════ */}
         {tab === "premios" && (() => {
           const tournamentStarted = todayStr() >= TOURNAMENT_START;
-          const canEdit = adminMode || (!!person && authed.has(person) && !tournamentStarted);
+          const canEdit = !isAI(person) && (adminMode || (!!person && authed.has(person) && !tournamentStarted));
           const myExtras = (data.extras || {})[person] || {};
           const er = data.extrasResults || {};
           return (
@@ -1150,7 +1142,7 @@ export default function App() {
                   {!data.participants.length && <span style={{ fontSize: 14, color: "var(--silver)" }}>Agrega participantes en la pestaña 👥 primero</span>}
                   {data.participants.map(p => (
                     <button key={p} className={`part-chip${person === p ? " active" : ""}`} onClick={() => selectPerson(p)}>
-                      {p} {!authed.has(p) && !adminMode && <span style={{ fontSize: 11, opacity: 0.6 }}>🔒</span>}
+                      {p} {!isAI(p) && !authed.has(p) && !adminMode && <span style={{ fontSize: 11, opacity: 0.6 }}>🔒</span>}{isAI(p) && <span style={{ fontSize: 10, opacity: 0.7 }}>🤖</span>}
                     </button>
                   ))}
                 </div>
@@ -1319,7 +1311,7 @@ export default function App() {
 
         {/* ════ ELIMINACIÓN (bracket) ════ */}
         {tab === "bracket" && (() => {
-          const canEdit = !!person && (adminMode || authed.has(person));
+          const canEdit = !!person && !isAI(person) && (adminMode || authed.has(person));
           const predForPerson = person ? (data.predictions[person] || {}) : {};
           const seeds = getQualified(predForPerson);
           const picks = person ? ((data.brackets || {})[person] || {}) : {};
@@ -1342,7 +1334,7 @@ export default function App() {
                   {!data.participants.length && <span style={{ fontSize: 14, color: "var(--silver)" }}>Agrega participantes primero</span>}
                   {data.participants.map(p => (
                     <button key={p} className={`part-chip${person === p ? " active" : ""}`} onClick={() => selectPerson(p)}>
-                      {p} {!authed.has(p) && !adminMode && <span style={{ fontSize: 11, opacity: 0.6 }}>🔒</span>}
+                      {p} {!isAI(p) && !authed.has(p) && !adminMode && <span style={{ fontSize: 11, opacity: 0.6 }}>🔒</span>}{isAI(p) && <span style={{ fontSize: 10, opacity: 0.7 }}>🤖</span>}
                     </button>
                   ))}
                   {canEdit && <button className="btn btn-ghost" style={{ marginLeft: "auto" }} onClick={resetBracket}>↺ Reiniciar</button>}
@@ -1419,10 +1411,10 @@ export default function App() {
                   onKeyDown={e => e.key === "Enter" && addParticipant()} maxLength={32}
                   style={{ width: 140, padding: "10px 14px", background: "rgba(6,14,38,0.7)", border: `1.5px solid ${nameErr ? "var(--rose)" : "rgba(148,163,184,0.18)"}`, borderRadius: 10, color: "var(--white)", fontSize: 14, outline: "none", fontFamily: "'DM Sans',sans-serif" }}
                 />
-                <button className="btn btn-primary" onClick={addParticipant} disabled={data.participants.length >= 8}>+ Agregar</button>
+                <button className="btn btn-primary" onClick={addParticipant} disabled={data.participants.length >= 16}>+ Agregar</button>
               </div>
               {nameErr && <p style={{ fontSize: 12, color: "var(--rose)", marginTop: 7 }}>{nameErr}</p>}
-              <p style={{ fontSize: 11, color: "var(--silver)", marginTop: 8 }}>{data.participants.length}/8 participantes</p>
+              <p style={{ fontSize: 11, color: "var(--silver)", marginTop: 8 }}>{data.participants.length}/16 participantes (incluye 2 IA 🤖)</p>
             </div>
 
             {!data.participants.length && (
@@ -1440,13 +1432,17 @@ export default function App() {
                     {name[0].toUpperCase()}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 16, fontWeight: 600, letterSpacing: 0.5, marginBottom: 3 }}>{name}</div>
+                    <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 16, fontWeight: 600, letterSpacing: 0.5, marginBottom: 3 }}>
+                      {name} {isAI(name) && <span style={{ fontSize: 10, color: "var(--blue-xl)", fontWeight: 500, letterSpacing: 1 }}>· IA</span>}
+                    </div>
                     <div style={{ fontSize: 11, color: "var(--silver)", marginBottom: 5 }}>{filled}/72 predicciones · <span style={{ color: "var(--gold)", fontWeight: 600 }}>{pts} pts</span></div>
                     <div className="prog-track">
                       <div className="prog-fill" style={{ width: `${(filled / 72) * 100}%`, background: filled === 72 ? "var(--emerald)" : "var(--blue-l)" }} />
                     </div>
                   </div>
-                  <button onClick={() => requestDelete(name)} style={{ padding: "5px 10px", background: "rgba(244,63,94,0.1)", border: "1px solid rgba(244,63,94,0.3)", color: "var(--rose)", borderRadius: 7, cursor: "pointer", fontSize: 12, flexShrink: 0 }}>✕</button>
+                  {isAI(name)
+                    ? <span style={{ fontSize: 18, flexShrink: 0 }} title="Participante IA (no editable)">🤖</span>
+                    : <button onClick={() => requestDelete(name)} style={{ padding: "5px 10px", background: "rgba(244,63,94,0.1)", border: "1px solid rgba(244,63,94,0.3)", color: "var(--rose)", borderRadius: 7, cursor: "pointer", fontSize: 12, flexShrink: 0 }}>✕</button>}
                 </div>
               );
             })}
