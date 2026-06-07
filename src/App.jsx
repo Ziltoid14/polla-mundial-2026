@@ -167,6 +167,57 @@ const extrasPts = (name, extras, er) =>
 const grandTotal = (name, data) =>
   totalPts(name, data.predictions, data.results) + extrasPts(name, data.extras || {}, data.extrasResults || {});
 
+/* ═══════════════════════ BRACKET (eliminación) ═══════════════════════ */
+// Posiciones de siembra estándar para 32 equipos (mantiene a los mejores separados)
+const SEED_POSITIONS = [1,32,16,17,8,25,9,24,4,29,13,20,5,28,12,21,2,31,15,18,7,26,10,23,3,30,14,19,6,27,11,22];
+const ROUNDS = [
+  { id: "R32", n: 16, label: "16avos" },
+  { id: "R16", n: 8,  label: "Octavos" },
+  { id: "QF",  n: 4,  label: "Cuartos" },
+  { id: "SF",  n: 2,  label: "Semis" },
+  { id: "F",   n: 1,  label: "Final" },
+];
+
+// 32 clasificados (1°+2° de cada grupo + 8 mejores 3°) según las predicciones de grupo de la persona
+const getQualified = (predForPerson) => {
+  const rankPerf = (a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf;
+  const firsts = [], seconds = [], thirdsAll = [];
+  GK.forEach(g => {
+    const st = getStandings(g, predForPerson || {});
+    if (st[0]) firsts.push(st[0]);
+    if (st[1]) seconds.push(st[1]);
+    if (st[2]) thirdsAll.push(st[2]);
+  });
+  const thirds = [...thirdsAll].sort(rankPerf).slice(0, 8);
+  return [...[...firsts].sort(rankPerf), ...[...seconds].sort(rankPerf), ...[...thirds].sort(rankPerf)].map(x => x.t);
+};
+
+// Construye todas las rondas a partir de los 32 sembrados y las elecciones del usuario
+const buildBracket = (seeds, picks) => {
+  const seedIdx = (t) => { const i = seeds.indexOf(t); return i < 0 ? 999 : i; };
+  const winnerOf = (rid, idx, a, b) => {
+    if (!a || !b) return a || b || null;
+    const p = picks?.[`${rid}-${idx}`];
+    if (p === a || p === b) return p;
+    return seedIdx(a) <= seedIdx(b) ? a : b; // por defecto avanza el mejor sembrado
+  };
+  const roundsData = [];
+  let prevWinners = null;
+  ROUNDS.forEach((R, ri) => {
+    const matches = [];
+    for (let i = 0; i < R.n; i++) {
+      let a, b;
+      if (ri === 0) { a = seeds[SEED_POSITIONS[2 * i] - 1]; b = seeds[SEED_POSITIONS[2 * i + 1] - 1]; }
+      else { a = prevWinners[2 * i]; b = prevWinners[2 * i + 1]; }
+      const w = winnerOf(R.id, i, a, b);
+      matches.push({ a, b, w, idx: i });
+    }
+    roundsData.push({ ...R, matches });
+    prevWinners = matches.map(m => m.w);
+  });
+  return { roundsData, champion: prevWinners[0] || null };
+};
+
 /* ═══════════════════════ DESIGN TOKENS ═══════════════════════ */
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
@@ -452,6 +503,60 @@ const CSS = `
     color:var(--gold-l); letter-spacing:1px;
   }
 
+  /* ═══ BRACKET ═══ */
+  .bracket-scroll { overflow-x:auto; overflow-y:hidden; padding:4px 4px 16px; }
+  .bracket { display:flex; gap:26px; min-width:max-content; align-items:stretch; }
+  .bk-round { display:flex; flex-direction:column; justify-content:space-around; min-width:172px; }
+  .bk-round-head {
+    font-family:'Oswald',sans-serif; font-size:12px; letter-spacing:2px; color:var(--silver);
+    text-align:center; padding:6px 0; margin-bottom:6px;
+    border-bottom:1px solid rgba(148,163,184,0.1);
+  }
+  .bk-match {
+    background:rgba(15,31,66,0.6); border:1px solid var(--glass-b);
+    border-radius:10px; overflow:hidden; margin:7px 0;
+  }
+  .bk-team {
+    display:flex; align-items:center; gap:8px; padding:8px 10px;
+    cursor:pointer; font-size:13px; color:var(--silver-l);
+    border-left:3px solid transparent; transition:background 0.15s, color 0.15s;
+    user-select:none;
+  }
+  .bk-team:hover { background:rgba(37,99,235,0.12); color:var(--white); }
+  .bk-team + .bk-team { border-top:1px solid rgba(148,163,184,0.08); }
+  .bk-team.win {
+    background:rgba(245,158,11,0.12); border-left-color:var(--gold);
+    color:var(--gold-l); font-weight:600;
+    animation:bkWin 0.32s ease;
+  }
+  .bk-team.lose { opacity:0.42; }
+  .bk-team.empty { opacity:0.3; font-style:italic; cursor:default; }
+  .bk-team .bk-flag { font-size:17px; line-height:1; flex-shrink:0; }
+  .bk-team .bk-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bk-readonly .bk-team { cursor:default; }
+  @keyframes bkWin {
+    0% { transform:scale(0.96); } 55% { transform:scale(1.03); } 100% { transform:scale(1); }
+  }
+
+  /* Champion column */
+  .champ-col { display:flex; flex-direction:column; justify-content:center; min-width:210px; }
+  .champ-card {
+    border-radius:18px; padding:24px 20px; text-align:center;
+    background:linear-gradient(160deg, rgba(245,158,11,0.18), rgba(15,31,66,0.6));
+    border:1.5px solid rgba(245,158,11,0.45);
+    animation:champIn 0.6s cubic-bezier(0.2,0.8,0.2,1) both, champGlow 2.4s ease-in-out infinite 0.6s;
+    position:relative; overflow:hidden;
+  }
+  .champ-trophy { font-size:54px; line-height:1; margin-bottom:8px; animation:trophyFloat 2.6s ease-in-out infinite; }
+  .champ-flag { font-size:46px; line-height:1; margin:6px 0; }
+  .champ-name { font-family:'Oswald',sans-serif; font-size:24px; font-weight:700; letter-spacing:1px; color:var(--gold-l); }
+  .champ-label { font-size:11px; letter-spacing:3px; color:var(--gold); margin-bottom:10px; }
+  @keyframes champIn { 0%{transform:scale(0.5) rotate(-8deg);opacity:0;} 60%{transform:scale(1.12) rotate(3deg);} 100%{transform:scale(1) rotate(0);opacity:1;} }
+  @keyframes champGlow { 0%,100%{box-shadow:0 0 28px rgba(245,158,11,0.35);} 50%{box-shadow:0 0 58px rgba(245,158,11,0.7);} }
+  @keyframes trophyFloat { 0%,100%{transform:translateY(0) rotate(-3deg);} 50%{transform:translateY(-7px) rotate(3deg);} }
+  .confetti { position:absolute; top:-10px; font-size:14px; animation:confettiFall linear infinite; }
+  @keyframes confettiFall { 0%{transform:translateY(-10px) rotate(0);opacity:1;} 100%{transform:translateY(260px) rotate(360deg);opacity:0;} }
+
   /* ═══ MOBILE ═══ */
   @media (max-width: 640px) {
     /* Header */
@@ -581,7 +686,7 @@ const optsFor = (type) => type === "country" ? COUNTRY_OPTS : type === "gk" ? GK
 
 /* ═══════════════════════ APP ═══════════════════════ */
 const DOC_REF = doc(db, "polla2026", "data");
-const EMPTY   = { participants: [], predictions: {}, results: {}, passwords: {}, extras: {}, extrasResults: {} };
+const EMPTY   = { participants: [], predictions: {}, results: {}, passwords: {}, extras: {}, extrasResults: {}, brackets: {} };
 
 export default function App() {
   const [data,   setData]   = useState(EMPTY);
@@ -706,6 +811,16 @@ export default function App() {
 
   const setExtraResult = (catId, val) => {
     persist(s => ({ ...s, extrasResults: { ...(s.extrasResults || {}), [catId]: val } }));
+  };
+
+  const setBracketPick = (slotId, team) => {
+    if (!person) return;
+    persist(s => ({ ...s, brackets: { ...(s.brackets || {}), [person]: { ...((s.brackets || {})[person] || {}), [slotId]: team } } }));
+  };
+
+  const resetBracket = () => {
+    if (!person) return;
+    persist(s => ({ ...s, brackets: { ...(s.brackets || {}), [person]: {} } }));
   };
 
   const switchGrp = (g) => { setGrp(g); setGrpKey(k => k + 1); };
@@ -859,7 +974,8 @@ export default function App() {
             { id: "predicciones", label: "⚽  Predicciones" },
             { id: "premios", label: "🎖️  Premios" },
             { id: "clasificacion", label: "🏆  Clasificación" },
-            { id: "llave", label: "📊  La Llave" },
+            { id: "llave", label: "📊  Grupos" },
+            { id: "bracket", label: "🔮  Eliminación" },
             { id: "participantes", label: "👥  Participantes" },
           ].map(t => (
             <button key={t.id} className={`tab-btn${tab === t.id ? " active" : ""}`} onClick={() => setTab(t.id)}>{t.label}</button>
@@ -1200,6 +1316,91 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* ════ ELIMINACIÓN (bracket) ════ */}
+        {tab === "bracket" && (() => {
+          const canEdit = !!person && (adminMode || authed.has(person));
+          const predForPerson = person ? (data.predictions[person] || {}) : {};
+          const seeds = getQualified(predForPerson);
+          const picks = person ? ((data.brackets || {})[person] || {}) : {};
+          const { roundsData, champion } = buildBracket(seeds, picks);
+          const confettiBits = ["🎉","🎊","⚽","✨","🏅","🎉","⭐","🎊"];
+          return (
+            <div>
+              <div className="section-header" style={{ marginBottom: 6, display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+                <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 30, fontWeight: 700, letterSpacing: 3 }}>ELIMINACIÓN</h2>
+                <span style={{ fontSize: 13, color: "var(--silver)" }}>simulador · NO afecta tu puntaje</span>
+              </div>
+              <p style={{ fontSize: 12, color: "var(--silver)", marginBottom: 14, maxWidth: 620, lineHeight: 1.6 }}>
+                El cuadro se arma con <strong style={{ color: "var(--white)" }}>tus predicciones de grupos</strong> (1° y 2° de cada grupo + los 8 mejores terceros). Haz clic en un equipo para hacerlo avanzar y ve quién sería tu campeón. 🏆
+              </p>
+
+              {/* Participant selector */}
+              <div className="glass" style={{ borderRadius: 14, padding: "14px 18px", marginBottom: 16 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ fontSize: 11, letterSpacing: 2, color: "var(--silver)", fontWeight: 500, marginRight: 4 }}>PARTICIPANTE</span>
+                  {!data.participants.length && <span style={{ fontSize: 14, color: "var(--silver)" }}>Agrega participantes primero</span>}
+                  {data.participants.map(p => (
+                    <button key={p} className={`part-chip${person === p ? " active" : ""}`} onClick={() => selectPerson(p)}>
+                      {p} {!authed.has(p) && !adminMode && <span style={{ fontSize: 11, opacity: 0.6 }}>🔒</span>}
+                    </button>
+                  ))}
+                  {canEdit && <button className="btn btn-ghost" style={{ marginLeft: "auto" }} onClick={resetBracket}>↺ Reiniciar</button>}
+                </div>
+              </div>
+
+              {!person ? (
+                <div style={{ padding: "36px", textAlign: "center", color: "var(--silver)", fontSize: 14 }}>Selecciona un participante para ver su cuadro</div>
+              ) : (
+                <div className="bracket-scroll">
+                  <div className={`bracket${canEdit ? "" : " bk-readonly"}`}>
+                    {roundsData.map((R) => (
+                      <div key={R.id} className="bk-round">
+                        <div className="bk-round-head">{R.label}</div>
+                        {R.matches.map((m) => {
+                          const renderTeam = (t) => {
+                            if (!t) return <div className="bk-team empty"><span className="bk-flag">⬚</span><span className="bk-name">Por definir</span></div>;
+                            const isWin = m.w === t;
+                            const cls = `bk-team${isWin ? " win" : ""}${m.w && m.w !== t ? " lose" : ""}`;
+                            return (
+                              <div className={cls} onClick={() => canEdit && setBracketPick(`${R.id}-${m.idx}`, t)}>
+                                <span className="bk-flag">{FL[t] || "🏳️"}</span>
+                                <span className="bk-name">{t}</span>
+                              </div>
+                            );
+                          };
+                          return (
+                            <div key={m.idx} className="bk-match">
+                              {renderTeam(m.a)}{renderTeam(m.b)}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                    {/* Champion */}
+                    <div className="champ-col">
+                      <div className="champ-card" key={champion || "none"}>
+                        {champion && confettiBits.map((c, i) => (
+                          <span key={i} className="confetti" style={{ left: `${8 + i * 11}%`, animationDuration: `${2 + (i % 4) * 0.6}s`, animationDelay: `${(i % 5) * 0.3}s` }}>{c}</span>
+                        ))}
+                        <div className="champ-trophy">🏆</div>
+                        <div className="champ-label">CAMPEÓN</div>
+                        {champion ? (
+                          <>
+                            <div className="champ-flag">{FL[champion] || "🏳️"}</div>
+                            <div className="champ-name">{champion}</div>
+                          </>
+                        ) : (
+                          <div style={{ fontSize: 13, color: "var(--silver)" }}>Completa el cuadro</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ════ PARTICIPANTES ════ */}
         {tab === "participantes" && (
