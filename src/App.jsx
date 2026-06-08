@@ -29,6 +29,13 @@ const AVATAR_ICONS = [
 /* La más reciente arriba. Al cambiar la primera versión, el pop-up de novedades
    vuelve a aparecer una vez para todos. Se muestran las 2 últimas. */
 const CHANGELOG = [
+  { v: "1.4", date: "8 jun", items: [
+    "📅 Nueva pestaña 'Hoy': próximos partidos y resultados, con tu predicción y acceso directo a predecir.",
+    "📊 Datos curiosos: favoritos, el más arriesgado/cauto, coincidencias y más.",
+    "🏆 Clasificación renovada: podio, tu resumen con logros y barras de puntos.",
+    "🖥️ Mejor en pantallas grandes, pestañas fijas al hacer scroll y números animados.",
+    "🔮 Eliminación con zoom para ver toda la llave.",
+  ]},
   { v: "1.3", date: "8 jun", items: [
     "🐛 Arreglado el selector de Premios que se tapaba con la tarjeta de abajo.",
     "📝 Notas de versión: este aviso con los cambios al actualizar.",
@@ -227,7 +234,12 @@ const CSS = `
     --glass-b2:rgba(148,163,184,0.22);
     --shadow: 0 8px 32px rgba(0,0,0,0.5);
     --shadow-l:0 2px 12px rgba(0,0,0,0.35);
+    --container: 1080px;
   }
+  /* Aprovechar mejor los monitores grandes */
+  @media (min-width:1440px) { :root { --container: 1240px; } }
+  @media (min-width:1700px) { :root { --container: 1380px; } }
+  @media (min-width:2000px) { :root { --container: 1500px; } }
 
   body { background: var(--navy-0); }
 
@@ -250,11 +262,11 @@ const CSS = `
   }
 
   .glass {
-    background: var(--glass);
+    background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0) 90px), var(--glass);
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
     border: 1px solid var(--glass-b);
-    box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.04);
+    box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.06);
   }
   .glass-sm {
     background: rgba(15,31,66,0.45);
@@ -700,6 +712,45 @@ const CSS = `
   .host-flags { display:inline-flex; gap:3px; font-size:14px; vertical-align:middle; }
   .leader-chip { display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:30px; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.4); font-size:12px; color:var(--gold-l); font-weight:600; }
 
+  /* ═══ TU RESUMEN ═══ */
+  .mi-resumen { border:1px solid rgba(245,158,11,0.3) !important; background:linear-gradient(180deg, rgba(245,158,11,0.07), rgba(15,31,66,0.55)) !important; }
+  .mi-resumen-tiles { display:flex; gap:22px; margin-left:auto; flex-wrap:wrap; }
+
+  /* ═══ ZOOM DEL BRACKET ═══ */
+  .bk-zoom { display:flex; align-items:center; gap:5px; }
+  .bk-zoom-btn { padding:5px 12px !important; font-size:17px !important; line-height:1; font-weight:700; }
+
+  /* ═══ AGENDA / PARTIDOS DE HOY ═══ */
+  .mini-row { display:grid; grid-template-columns:52px 1fr 54px 1fr auto; gap:8px; align-items:center; padding:9px 14px; border-bottom:1px solid rgba(148,163,184,0.07); }
+  .mini-row:last-child { border-bottom:none; }
+  .mini-row.today { background:rgba(245,158,11,0.06); }
+  .mini-act { text-align:right; min-width:96px; }
+  .mini-go { font-family:'DM Sans',sans-serif; font-size:11.5px; font-weight:600; padding:6px 11px; border-radius:8px; cursor:pointer; white-space:nowrap; background:rgba(148,163,184,0.1); border:1px solid rgba(148,163,184,0.22); color:var(--silver-l); transition:all 0.15s; }
+  .mini-go:hover { background:rgba(37,99,235,0.18); border-color:var(--blue-l); color:#fff; }
+  .mini-go.warn { background:rgba(245,158,11,0.14); border-color:rgba(245,158,11,0.45); color:var(--gold-l); }
+  .mini-go.warn:hover { background:rgba(245,158,11,0.26); color:#fff; }
+  .mini-go.icon { padding:6px 10px; font-size:13.5px; }
+  .pend-notice { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:11px 16px; border-radius:12px; margin-bottom:16px; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.4); color:var(--gold-l); font-size:13.5px; font-weight:500; }
+  .logros { display:flex; gap:7px; flex-wrap:wrap; margin-top:12px; width:100%; }
+  .logro { width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:17px; background:rgba(148,163,184,0.08); border:1px solid rgba(148,163,184,0.15); filter:grayscale(1) opacity(0.4); cursor:default; transition:all 0.15s; }
+  .logro.got { filter:none; background:rgba(245,158,11,0.14); border-color:rgba(245,158,11,0.4); box-shadow:0 0 10px rgba(245,158,11,0.2); }
+  .insight-click { cursor:pointer; }
+  .insight-click:hover { border-color:var(--blue-l); }
+  .mini-team { display:flex; align-items:center; gap:7px; min-width:0; }
+  .mini-team .mf { font-size:18px; flex-shrink:0; }
+  .mini-team .mn { font-family:'Oswald',sans-serif; font-size:13.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mini-team.away { flex-direction:row-reverse; text-align:right; }
+  .mini-mid { text-align:center; font-family:'Oswald',sans-serif; }
+  .mini-score { font-size:17px; font-weight:700; color:var(--gold-l); letter-spacing:1px; }
+  .mini-vs { font-size:11px; color:var(--silver); }
+  .mini-pred { font-size:10.5px; color:var(--silver); margin-top:1px; }
+  .insight-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
+  .insight-card { border-radius:14px; padding:14px 16px; border:1px solid var(--glass-b); background:var(--glass); display:flex; align-items:center; gap:12px; }
+  .insight-ic { font-size:28px; line-height:1; flex-shrink:0; }
+  .insight-lbl { font-size:10.5px; letter-spacing:1px; color:var(--silver); font-weight:600; }
+  .insight-val { font-family:'Oswald',sans-serif; font-size:16px; font-weight:700; color:var(--white); margin-top:2px; }
+  .insight-sub { font-size:11px; color:var(--silver); }
+
   /* ═══ Banner de predicciones completas ═══ */
   .done-banner {
     position:relative; overflow:hidden; margin-top:12px; padding:11px 16px; border-radius:12px;
@@ -785,6 +836,19 @@ const CSS = `
     .pod-name { font-size:12px !important; }
     .pod-flag { font-size:28px !important; }
     .pod-medal { font-size:24px !important; }
+
+    /* Tu resumen — tiles a lo ancho */
+    .mi-resumen-tiles { margin-left:0 !important; width:100%; justify-content:space-between !important; gap:6px !important; }
+    .mi-resumen-tiles > div { min-width:0 !important; }
+
+    /* Hoy — partido arriba, acción centrada bajo el "vs" */
+    .mini-row { grid-template-columns:44px 1fr auto 1fr !important; grid-template-areas:"d h m a" ". . x ." !important; row-gap:7px !important; padding:11px 12px !important; }
+    .mini-row > *:nth-child(1){ grid-area:d; }
+    .mini-row > *:nth-child(2){ grid-area:h; }
+    .mini-row > *:nth-child(3){ grid-area:m; }
+    .mini-row > *:nth-child(4){ grid-area:a; }
+    .mini-act { grid-area:x; text-align:center !important; min-width:0 !important; }
+    .mini-team .mn { font-size:12.5px !important; }
   }
 
   /* ═══ BANNER NUEVA VERSIÓN ═══ */
@@ -802,15 +866,39 @@ const CSS = `
   @keyframes upIn { 0%{opacity:0; transform:translate(-50%,18px);} 100%{opacity:1; transform:translate(-50%,0);} }
 
   /* ═══ POP-UP NOTAS DE VERSIÓN ═══ */
-  .notes-pop { border:1px solid rgba(245,158,11,0.35); animation:notesIn 0.35s cubic-bezier(0.2,0.8,0.2,1) both; }
+  .notes-pop {
+    position:relative; display:flex; flex-direction:column;
+    width:420px; max-width:92vw; max-height:85vh; padding:0; overflow:hidden;
+    border:1px solid rgba(245,158,11,0.35);
+    animation:notesIn 0.35s cubic-bezier(0.2,0.8,0.2,1) both;
+  }
   @keyframes notesIn { 0%{opacity:0; transform:scale(0.94) translateY(10px);} 100%{opacity:1; transform:scale(1) translateY(0);} }
+  .notes-head { padding:22px 24px 10px; }
+  .notes-title { font-family:'Oswald',sans-serif; font-size:22px; font-weight:700; letter-spacing:1.5px; }
+  .notes-intro { font-size:12.5px; color:var(--silver); margin-top:2px; }
+  .notes-body { overflow-y:auto; padding:4px 24px 8px; }
+  .notes-rel { margin-bottom:14px; }
+  .notes-rel-head { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .notes-ver { font-family:'Oswald',sans-serif; font-weight:700; font-size:13px; color:var(--navy-0); background:var(--gold-l); border-radius:20px; padding:2px 10px; letter-spacing:0.5px; }
+  .notes-date { font-size:11.5px; color:var(--silver); }
+  .notes-list { list-style:none; display:flex; flex-direction:column; gap:6px; }
+  .notes-item { font-size:13px; color:var(--silver-l); line-height:1.45; }
+  .notes-ok { margin:10px 24px 22px; padding:11px 0; flex-shrink:0; }
   .notes-x {
-    position:absolute; top:12px; right:12px; width:28px; height:28px; border-radius:8px;
+    position:absolute; top:12px; right:12px; width:28px; height:28px; border-radius:8px; z-index:1;
     background:rgba(148,163,184,0.12); border:1px solid rgba(148,163,184,0.2);
     color:var(--silver-l); font-size:13px; cursor:pointer; line-height:1;
     display:flex; align-items:center; justify-content:center; transition:all 0.15s;
   }
   .notes-x:hover { background:rgba(244,63,94,0.18); border-color:rgba(244,63,94,0.4); color:var(--rose); }
+  @media (max-width:640px) {
+    .notes-pop { max-height:82vh; }
+    .notes-head { padding:18px 18px 8px; }
+    .notes-title { font-size:18px; }
+    .notes-body { padding:4px 18px 6px; }
+    .notes-item { font-size:12.5px; }
+    .notes-ok { margin:8px 18px 18px; }
+  }
 `;
 
 /* ═══════════════════════ SEARCHABLE SELECT ═══════════════════════ */
@@ -883,6 +971,28 @@ const PLAYER_OPTS  = PLAYERS.map(p => ({ value: p.n, label: p.n, flag: FL[p.c] |
 const GK_OPTS      = GKS.map(p => ({ value: p.n, label: p.n, flag: FL[p.c] || "🏳️", sub: p.c }));
 const optsFor = (type) => type === "country" ? COUNTRY_OPTS : type === "gk" ? GK_OPTS : PLAYER_OPTS;
 
+/* ═══════════════════════ NÚMEROS ANIMADOS (count-up) ═══════════════════════ */
+function CountUp({ value, dur = 700 }) {
+  const [disp, setDisp] = useState(value);
+  const fromRef = useRef(value);
+  useEffect(() => {
+    const from = fromRef.current, to = Number(value) || 0;
+    if (from === to) { setDisp(to); return; }
+    const start = performance.now();
+    let raf;
+    const tick = (t) => {
+      const p = Math.min(1, (t - start) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setDisp(Math.round(from + (to - from) * eased));
+      if (p < 1) raf = requestAnimationFrame(tick);
+      else fromRef.current = to;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value, dur]);
+  return <>{disp}</>;
+}
+
 /* ═══════════════════════ APP ═══════════════════════ */
 const DOC_REF = doc(db, "polla2026", "data");
 const EMPTY   = { participants: [], predictions: {}, results: {}, passwords: {}, extras: {}, extrasResults: {}, brackets: {}, icons: {} };
@@ -893,6 +1003,7 @@ export default function App() {
   const [tab,    setTab]    = useState("predicciones");
   const [grp,    setGrp]    = useState("A");
   const [grpKey, setGrpKey] = useState(0);
+  const [bkZoom, setBkZoom] = useState(1);
   const [person, setPerson] = useState("");
   const [adminMode,  setAdmin] = useState(false);
   const [showLogin,  setLogin] = useState(false);
@@ -1153,6 +1264,7 @@ export default function App() {
   const sorted = [...data.participants].sort((a, b) => grandTotal(b, data) - grandTotal(a, data));
   const totalRes = Object.keys(data.results).filter(k => data.results[k]?.h != null && data.results[k]?.a != null).length;
   const filledP = person ? Object.values(MATCHES).flat().filter(m => { const p = data.predictions[person]?.[m.id]; return p?.h !== "" && p?.h != null && p?.a !== "" && p?.a != null; }).length : 0;
+  const pendingP = (person && !isAI(person)) ? Object.values(MATCHES).flat().filter(m => { if (isLocked(m.date)) return false; const p = data.predictions[person]?.[m.id]; return !(p?.h !== "" && p?.h != null && p?.a !== "" && p?.a != null); }).length : 0;
 
   const openTip = (el, payload) => {
     const r = el.getBoundingClientRect();
@@ -1213,31 +1325,33 @@ export default function App() {
       {/* ══ POP-UP NOTAS DE VERSIÓN ══ */}
       {showNotes && (
         <div className="modal" onClick={e => e.target === e.currentTarget && dismissNotes()}>
-          <div className="glass notes-pop" style={{ borderRadius: 16, padding: 24, width: 420, maxWidth: "92vw", maxHeight: "85vh", overflowY: "auto", position: "relative" }}>
+          <div className="glass notes-pop">
             <button onClick={dismissNotes} title="Cerrar" className="notes-x">✕</button>
-            <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 22, fontWeight: 700, letterSpacing: 1.5, marginBottom: 2 }}>✨ NOVEDADES</div>
-            <div style={{ fontSize: 12.5, color: "var(--silver)", marginBottom: 16 }}>Esto es lo nuevo en la app:</div>
-            {CHANGELOG.slice(0, 2).map((rel, i) => (
-              <div key={rel.v} style={{ marginBottom: i === 0 ? 16 : 4 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                  <span style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 13, color: "var(--navy-0)", background: "var(--gold-l)", borderRadius: 20, padding: "2px 10px", letterSpacing: 0.5 }}>v{rel.v}</span>
-                  <span style={{ fontSize: 11.5, color: "var(--silver)" }}>{rel.date}</span>
+            <div className="notes-head">
+              <div className="notes-title">✨ NOVEDADES</div>
+              <div className="notes-intro">Esto es lo nuevo en la app:</div>
+            </div>
+            <div className="notes-body">
+              {CHANGELOG.slice(0, 2).map((rel) => (
+                <div key={rel.v} className="notes-rel">
+                  <div className="notes-rel-head">
+                    <span className="notes-ver">v{rel.v}</span>
+                    <span className="notes-date">{rel.date}</span>
+                  </div>
+                  <ul className="notes-list">
+                    {rel.items.map((it, j) => <li key={j} className="notes-item">{it}</li>)}
+                  </ul>
                 </div>
-                <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 7 }}>
-                  {rel.items.map((it, j) => (
-                    <li key={j} style={{ fontSize: 13.5, color: "var(--silver-l)", lineHeight: 1.5, paddingLeft: 4 }}>{it}</li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-            <button className="btn btn-primary" style={{ width: "100%", padding: "11px 0", marginTop: 8 }} onClick={dismissNotes}>¡Listo!</button>
+              ))}
+            </div>
+            <button className="btn btn-primary notes-ok" onClick={dismissNotes}>¡Listo!</button>
           </div>
         </div>
       )}
 
       {/* ══ HEADER ══ */}
       <header style={{ borderBottom: "1px solid rgba(148,163,184,0.1)", padding: "16px 20px" }}>
-        <div style={{ maxWidth: 1080, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ maxWidth: "var(--container)", margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
             <h1 className="header-title" style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, letterSpacing: 4, marginBottom: 3, display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ filter: "drop-shadow(0 0 6px rgba(59,130,246,0.5))" }}>⚽</span>
@@ -1422,10 +1536,11 @@ export default function App() {
       })()}
 
       {/* ══ TABS ══ */}
-      <div style={{ background: "rgba(6,14,38,0.7)", backdropFilter: "blur(10px)", borderBottom: "1px solid rgba(148,163,184,0.08)", overflowX: "auto" }}>
-        <div style={{ maxWidth: 1080, margin: "0 auto", display: "flex", padding: "0 12px" }}>
+      <div style={{ background: "rgba(6,14,38,0.85)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderBottom: "1px solid rgba(148,163,184,0.08)", overflowX: "auto", position: "sticky", top: 0, zIndex: 100 }}>
+        <div style={{ maxWidth: "var(--container)", margin: "0 auto", display: "flex", padding: "0 12px" }}>
           {[
             { id: "predicciones", label: "⚽  Predicciones" },
+            { id: "hoy", label: "📅  Hoy" },
             { id: "premios", label: "🎖️  Premios" },
             { id: "clasificacion", label: "🏆  Clasificación" },
             { id: "llave", label: "📊  Grupos" },
@@ -1447,7 +1562,7 @@ export default function App() {
         const m = Math.floor((diff % 3600000) / 60000);
         const s = Math.floor((diff % 60000) / 1000);
         return (
-          <div style={{ maxWidth: 1080, margin: "0 auto", padding: "16px 16px 0" }}>
+          <div style={{ maxWidth: "var(--container)", margin: "0 auto", padding: "16px 16px 0" }}>
             <div className="countdown glass">
               {diff > 0 ? (
                 <>
@@ -1478,7 +1593,7 @@ export default function App() {
       })()}
 
       {/* ══ CONTENT ══ */}
-      <main style={{ maxWidth: 1080, margin: "0 auto", padding: "20px 16px" }}>
+      <main style={{ maxWidth: "var(--container)", margin: "0 auto", padding: "20px 16px" }}>
         <div key={tab} className="tab-fade">
 
         {/* ════ PREDICCIONES ════ */}
@@ -1508,6 +1623,12 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {pendingP > 0 && (
+              <div className="pend-notice">
+                <span>⚠️ Te faltan <b>{pendingP}</b> predicción{pendingP !== 1 ? "es" : ""} por hacer.</span>
+              </div>
+            )}
 
             {!person ? (
               <div className="glass" style={{ borderRadius: 14, padding: "44px 24px", textAlign: "center" }}>
@@ -1652,6 +1773,179 @@ export default function App() {
           </div>
         )}
 
+        {/* ════ HOY / AGENDA ════ */}
+        {tab === "hoy" && (() => {
+          const today = todayStr();
+          const allM = Object.values(MATCHES).flat();
+          const hasRes = (m) => { const r = data.results[m.id]; return r && r.h != null && r.a != null; };
+          const byDate = (a, b) => (a.date || "9999") < (b.date || "9999") ? -1 : 1;
+          const todayMatches = allM.filter(m => m.date === today).sort(byDate);
+          const upcoming = allM.filter(m => m.date && m.date > today && !hasRes(m)).sort(byDate).slice(0, 8);
+          const recent = allM.filter(m => hasRes(m)).sort((a, b) => byDate(b, a)).slice(0, 6);
+          const showPred = !!person && !isAI(person);
+
+          const renderMini = (m) => {
+            const r = data.results[m.id];
+            const res = hasRes(m);
+            const pred = data.predictions[person]?.[m.id];
+            const hasPred = showPred && pred && pred.h !== "" && pred.h != null && pred.a !== "" && pred.a != null;
+            const p = res && hasPred ? getPts(pred, r) : null;
+            const predColor = p === 3 ? "var(--gold-l)" : p === 1 ? "var(--emerald)" : p === 0 ? "var(--rose)" : "var(--silver-l)";
+            const goPredict = () => { setTab("predicciones"); switchGrp(m.id[0]); window.scrollTo(0, 0); };
+            return (
+              <div key={m.id} className={`mini-row${m.date === today ? " today" : ""}`}>
+                <div style={{ fontSize: 11, color: m.date === today ? "var(--gold)" : "var(--silver)", fontWeight: 500 }}>
+                  {fmtDate(m.date)}{m.date === today && <div style={{ fontSize: 8.5, letterSpacing: 0.5, fontWeight: 700 }}>HOY</div>}
+                </div>
+                <div className="mini-team"><span className="mf">{FL[m.home] || "🏳️"}</span><span className="mn">{m.home}</span></div>
+                <div className="mini-mid">{res ? <div className="mini-score">{r.h}–{r.a}</div> : <div className="mini-vs">vs</div>}</div>
+                <div className="mini-team away"><span className="mf">{FL[m.away] || "🏳️"}</span><span className="mn">{m.away}</span></div>
+                <div className="mini-act">
+                  {res ? (
+                    hasPred
+                      ? <span className="mini-pred" style={{ color: predColor }}>Tú: {pred.h}-{pred.a}{p != null ? ` (+${p})` : ""}</span>
+                      : <span className="mini-pred" style={{ color: "var(--silver)" }}>{showPred ? "no predijiste" : ""}</span>
+                  ) : (
+                    hasPred
+                      ? <button className="mini-go icon" onClick={goPredict} title={`Tú: ${pred.h}-${pred.a} · toca para editar`}>{pred.h}-{pred.a} ✏️</button>
+                      : <button className="mini-go warn icon" onClick={goPredict} title="Falta predecir este partido · toca para predecir">⚠️</button>
+                  )}
+                </div>
+              </div>
+            );
+          };
+
+          // Datos curiosos
+          const humans = data.participants.filter(x => !isAI(x));
+          const tally = (catId) => {
+            const map = {};
+            humans.forEach(p => { const v = (data.extras || {})[p]?.[catId]; if (v) map[v] = (map[v] || 0) + 1; });
+            let best = null, n = 0;
+            Object.entries(map).forEach(([k, c]) => { if (c > n) { n = c; best = k; } });
+            return best ? { name: best, n } : null;
+          };
+          const champFav = tally("campeon"), scorerFav = tally("goleador");
+          const flagPlayer = (nm) => FL[PLAYER_COUNTRY[nm]] || "🏳️";
+          const nameTag = (p) => `${iconFor(p) ? iconFor(p) + " " : ""}${displayName(p)}`;
+          const isFilled = (pr) => pr && pr.h !== "" && pr.h != null && pr.a !== "" && pr.a != null;
+
+          // El más arriesgado / cauto (promedio de goles por predicción, mín. 5 predicciones)
+          const avgList = humans.map(p => {
+            let sum = 0, n = 0;
+            allM.forEach(m => { const pr = data.predictions[p]?.[m.id]; if (isFilled(pr)) { sum += (+pr.h) + (+pr.a); n++; } });
+            return n >= 5 ? { p, avg: sum / n } : null;
+          }).filter(Boolean);
+          const riskiest = avgList.length ? avgList.reduce((a, b) => b.avg > a.avg ? b : a) : null;
+          const safest = avgList.length >= 2 ? avgList.reduce((a, b) => b.avg < a.avg ? b : a) : null;
+
+          // Próximo partido + a quién favorece la gente (con %)
+          const nextM = todayMatches[0] || upcoming[0] || null;
+          let nextLean = null;
+          if (nextM) {
+            let h = 0, d = 0, a = 0, tot = 0;
+            humans.forEach(p => { const pr = data.predictions[p]?.[nextM.id]; if (isFilled(pr)) { tot++; const diff = (+pr.h) - (+pr.a); if (diff > 0) h++; else if (diff < 0) a++; else d++; } });
+            if (tot > 0) {
+              const opts = [{ n: h, label: nextM.home, flag: FL[nextM.home] || "🏳️" }, { n: d, label: "empate", flag: "🤝" }, { n: a, label: nextM.away, flag: FL[nextM.away] || "🏳️" }];
+              const top = opts.reduce((x, y) => y.n > x.n ? y : x);
+              nextLean = { label: top.label, flag: top.flag, pct: Math.round(top.n / tot * 100) };
+            }
+          }
+
+          // Mayor coincidencia: mismo marcador exacto en un partido (mín. 2 personas)
+          let coMatch = null, coScore = null, coN = 1;
+          allM.forEach(m => {
+            const cnt = {};
+            humans.forEach(p => { const pr = data.predictions[p]?.[m.id]; if (isFilled(pr)) { const k = `${+pr.h}-${+pr.a}`; cnt[k] = (cnt[k] || 0) + 1; } });
+            Object.entries(cnt).forEach(([k, c]) => { if (c > coN) { coN = c; coMatch = m; coScore = k; } });
+          });
+
+          // Durante el torneo (necesitan resultados)
+          const playedSorted = allM.filter(m => hasRes(m)).sort(byDate);
+          let topExact = null, topEN = 0;
+          humans.forEach(p => { const e = countExact(p, data.predictions, data.results); if (e > topEN) { topEN = e; topExact = p; } });
+          let streakP = null, streakBest = 0;
+          humans.forEach(p => {
+            let cur = 0, best = 0;
+            playedSorted.forEach(m => { const pts = getPts(data.predictions[p]?.[m.id], data.results[m.id]); if (pts != null) { if (pts >= 1) { cur++; if (cur > best) best = cur; } else cur = 0; } });
+            if (best > streakBest) { streakBest = best; streakP = p; }
+          });
+          let accM = null, accN = 0;
+          playedSorted.forEach(m => { let c = 0; humans.forEach(p => { const pts = getPts(data.predictions[p]?.[m.id], data.results[m.id]); if (pts != null && pts >= 1) c++; }); if (c > accN) { accN = c; accM = m; } });
+
+          const insights = [];
+          if (nextM) insights.push({ ic: "🔜", lbl: "PRÓXIMO PARTIDO", val: `${FL[nextM.home] || "🏳️"} ${nextM.home} vs ${nextM.away} ${FL[nextM.away] || "🏳️"}`, sub: nextLean ? `La gente predice: ${nextLean.flag} ${nextLean.label} · ${nextLean.pct}%` : "aún sin pronósticos", onClick: () => { setTab("predicciones"); switchGrp(nextM.id[0]); window.scrollTo(0, 0); } });
+          if (champFav) insights.push({ ic: "🏆", lbl: "CAMPEÓN FAVORITO", val: `${FL[champFav.name] || "🏳️"} ${champFav.name}`, sub: `${champFav.n} voto${champFav.n !== 1 ? "s" : ""}` });
+          if (scorerFav) insights.push({ ic: "👟", lbl: "GOLEADOR FAVORITO", val: `${flagPlayer(scorerFav.name)} ${scorerFav.name}`, sub: `${scorerFav.n} voto${scorerFav.n !== 1 ? "s" : ""}` });
+          if (riskiest) insights.push({ ic: "🎲", lbl: "EL MÁS ARRIESGADO", val: nameTag(riskiest.p), sub: `${riskiest.avg.toFixed(1)} goles/partido` });
+          if (safest && riskiest && safest.p !== riskiest.p) insights.push({ ic: "🛡️", lbl: "EL MÁS CAUTO", val: nameTag(safest.p), sub: `${safest.avg.toFixed(1)} goles/partido` });
+          if (coMatch) insights.push({ ic: "🤝", lbl: "MAYOR COINCIDENCIA", val: `${FL[coMatch.home] || "🏳️"} ${coScore} ${FL[coMatch.away] || "🏳️"}`, sub: `${coN} personas · ${coMatch.home}-${coMatch.away}` });
+          if (topEN > 0) insights.push({ ic: "🎯", lbl: "MÁS EXACTOS", val: nameTag(topExact), sub: `${topEN} marcador${topEN !== 1 ? "es" : ""} exacto${topEN !== 1 ? "s" : ""}` });
+          if (streakBest > 1) insights.push({ ic: "🔥", lbl: "MEJOR RACHA", val: nameTag(streakP), sub: `${streakBest} aciertos seguidos` });
+          if (accM) insights.push({ ic: "✅", lbl: "PARTIDO MÁS ACERTADO", val: `${FL[accM.home] || "🏳️"} ${accM.home}–${accM.away} ${FL[accM.away] || "🏳️"}`, sub: `${accN} le achuntaron` });
+
+          const sectionTitle = (t) => <p style={{ fontSize: 11, letterSpacing: 2, color: "var(--silver)", fontWeight: 600, margin: "0 0 8px 2px" }}>{t}</p>;
+          const pendCount = showPred ? allM.filter(m => !isLocked(m.date) && !isFilled(data.predictions[person]?.[m.id])).length : 0;
+
+          return (
+            <div>
+              <div className="section-header" style={{ marginBottom: 18, display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+                <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 30, fontWeight: 700, letterSpacing: 3 }}>HOY</h2>
+                <span style={{ fontSize: 13, color: "var(--silver)" }}>partidos del día, próximos y resultados recientes</span>
+              </div>
+
+              {pendCount > 0 && (
+                <div className="pend-notice">
+                  <span>⚠️ Te faltan <b>{pendCount}</b> predicción{pendCount !== 1 ? "es" : ""} por hacer.</span>
+                  <button className="btn btn-primary" style={{ padding: "7px 14px" }} onClick={() => { setTab("predicciones"); window.scrollTo(0, 0); }}>Ir a predecir</button>
+                </div>
+              )}
+
+              {todayMatches.length > 0 && (
+                <div style={{ marginBottom: 18 }}>
+                  {sectionTitle("⚽ PARTIDOS DE HOY")}
+                  <div className="glass" style={{ borderRadius: 14, overflow: "hidden" }}>{todayMatches.map(renderMini)}</div>
+                </div>
+              )}
+
+              <div style={{ marginBottom: 18 }}>
+                {sectionTitle("🗓️ PRÓXIMOS PARTIDOS")}
+                <div className="glass" style={{ borderRadius: 14, overflow: "hidden" }}>
+                  {upcoming.length ? upcoming.map(renderMini) : <div style={{ padding: 24, textAlign: "center", color: "var(--silver)", fontSize: 13 }}>No quedan partidos próximos.</div>}
+                </div>
+              </div>
+
+              {recent.length > 0 && (
+                <div style={{ marginBottom: 18 }}>
+                  {sectionTitle("✅ ÚLTIMOS RESULTADOS")}
+                  <div className="glass" style={{ borderRadius: 14, overflow: "hidden" }}>{recent.map(renderMini)}</div>
+                </div>
+              )}
+
+              <div>
+                {sectionTitle("📊 DATOS CURIOSOS")}
+                {insights.length ? (
+                  <div className="insight-grid">
+                    {insights.map(it => (
+                      <div key={it.lbl} className={`insight-card${it.onClick ? " lift insight-click" : ""}`} onClick={it.onClick}>
+                        <span className="insight-ic">{it.ic}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <div className="insight-lbl">{it.lbl}</div>
+                          <div className="insight-val" style={{ lineHeight: 1.25 }}>{it.val}</div>
+                          <div className="insight-sub">{it.sub}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="glass" style={{ borderRadius: 14, padding: 24, textAlign: "center", color: "var(--silver)", fontSize: 13 }}>
+                    Aún no hay suficientes datos. Cuando los participantes elijan sus premios, aparecerán aquí los favoritos. 🔮
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* ════ PREMIOS ════ */}
         {tab === "premios" && (() => {
           const tournamentStarted = todayStr() >= TOURNAMENT_START;
@@ -1757,12 +2051,71 @@ export default function App() {
           const showPodium = sorted.length >= 2 && leaderPts > 0;
           const top3 = sorted.slice(0, 3);
           const podConfetti = ["🎉","🎊","✨","⭐","🏅","🎉","⭐","🎊"];
+          const me = (person && !isAI(person) && data.participants.includes(person)) ? person : null;
           return (
           <div>
             <div className="section-header" style={{ marginBottom: 18, display: "flex", alignItems: "baseline", gap: 12 }}>
               <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 30, fontWeight: 700, letterSpacing: 3 }}>CLASIFICACIÓN</h2>
               <span style={{ fontSize: 13, color: "var(--silver)" }}>fase de grupos · {totalRes}/72 resultados registrados</span>
             </div>
+
+            {/* Tu resumen personal */}
+            {me && (() => {
+              const rank = sorted.indexOf(me) + 1;
+              const pts = grandTotal(me, data);
+              const exact = countExact(me, data.predictions, data.results);
+              const winners = Object.values(MATCHES).flat().filter(m => getPts(data.predictions[me]?.[m.id], data.results[m.id]) === 1).length;
+              const filled = Object.values(MATCHES).flat().filter(m => { const p = data.predictions[me]?.[m.id]; return p?.h !== "" && p?.h != null && p?.a !== "" && p?.a != null; }).length;
+              let bestG = null, bestGP = -1;
+              GK.forEach(g => { const gp = MATCHES[g].reduce((s, m) => s + (getPts(data.predictions[me]?.[m.id], data.results[m.id]) ?? 0), 0); if (gp > bestGP) { bestGP = gp; bestG = g; } });
+              const tiles = [
+                { lbl: "PUNTOS", val: <CountUp value={pts} />, color: "var(--gold-l)" },
+                { lbl: "EXACTOS", val: <CountUp value={exact} />, color: "var(--gold)" },
+                { lbl: "ACIERTOS", val: <CountUp value={winners} />, color: "var(--emerald)" },
+                { lbl: "PREDICC.", val: `${filled}/72`, color: "var(--white)" },
+                { lbl: "MEJOR GRUPO", val: bestGP > 0 ? bestG : "—", color: "var(--blue-xl)" },
+              ];
+              const playedSt = Object.values(MATCHES).flat().filter(m => { const r = data.results[m.id]; return r && r.h != null && r.a != null; }).sort((a, b) => (a.date || "9") < (b.date || "9") ? -1 : 1);
+              let curStreak = 0;
+              playedSt.forEach(m => { const pt = getPts(data.predictions[me]?.[m.id], data.results[m.id]); if (pt != null) { if (pt >= 1) curStreak++; else curStreak = 0; } });
+              const extrasDone = EXTRA_CATS.every(c => (data.extras?.[me] || {})[c.id]);
+              const isLeader = sorted[0] === me && leaderPts > 0;
+              const badges = [
+                { ic: "📝", got: filled >= 1, name: "Pronosticador", how: "Predice al menos 1 partido" },
+                { ic: "✅", got: filled === 72, name: "Completista", how: "Completa las 72 predicciones" },
+                { ic: "🎖️", got: extrasDone, name: "Premios listos", how: "Elige los 6 premios" },
+                { ic: "🎯", got: exact >= 1, name: "Ojo de águila", how: "Acierta 1 marcador exacto" },
+                { ic: "🔥", got: curStreak >= 3, name: "En racha", how: "3 aciertos seguidos" },
+                { ic: "🥇", got: isLeader, name: "Líder", how: "Llega al 1° lugar" },
+              ];
+              return (
+                <div className="glass mi-resumen" style={{ borderRadius: 16, padding: "16px 20px", marginBottom: 20 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                    <div className="lb-av gold" style={{ width: 48, height: 48, fontSize: 23 }}>{avatarFor(me)}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 11, letterSpacing: 1.5, color: "var(--silver)", fontWeight: 600 }}>TU RESUMEN</div>
+                      <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 20, fontWeight: 700, letterSpacing: 0.5 }}>
+                        {displayName(me)} <span style={{ fontSize: 13, color: "var(--gold-l)" }}>· {leaderPts > 0 ? `${rank}º de ${sorted.length}` : "aún sin puntos"}</span>
+                      </div>
+                    </div>
+                    <div className="mi-resumen-tiles">
+                      {tiles.map(t => (
+                        <div key={t.lbl} style={{ textAlign: "center", minWidth: 56 }}>
+                          <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 25, fontWeight: 700, color: t.color, lineHeight: 1 }}>{t.val}</div>
+                          <div style={{ fontSize: 9.5, letterSpacing: 1, color: "var(--silver)", marginTop: 4 }}>{t.lbl}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="logros">
+                    <span style={{ fontSize: 10, letterSpacing: 1, color: "var(--silver)", fontWeight: 600, alignSelf: "center", marginRight: 2 }}>LOGROS</span>
+                    {badges.map(b => (
+                      <span key={b.name} className={`logro${b.got ? " got" : ""}`} title={b.got ? `✓ ${b.name}` : `${b.name} — ${b.how}`}>{b.ic}</span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Podio de líderes */}
             {showPodium && (
@@ -1827,7 +2180,7 @@ export default function App() {
                     <div style={{ textAlign: "center", color: "var(--silver)", fontSize: 14 }}>{played}</div>
                     <div style={{ textAlign: "center", fontFamily: "'Oswald',sans-serif", fontSize: 17, fontWeight: 700, color: "var(--gold)" }}>{exact}</div>
                     <div style={{ textAlign: "center", fontFamily: "'Oswald',sans-serif", fontSize: 17, fontWeight: 700, color: "var(--emerald)" }}>{winners}</div>
-                    <div style={{ textAlign: "center", fontFamily: "'Oswald',sans-serif", fontSize: 28, fontWeight: 700, color: isTop ? "var(--gold-l)" : "var(--white)" }}>{pts}</div>
+                    <div style={{ textAlign: "center", fontFamily: "'Oswald',sans-serif", fontSize: 28, fontWeight: 700, color: isTop ? "var(--gold-l)" : "var(--white)" }}><CountUp value={pts} /></div>
                   </div>
                 );
               })}
@@ -1936,7 +2289,15 @@ export default function App() {
                   <span style={{ fontSize: 11, letterSpacing: 2, color: "var(--silver)", fontWeight: 500, marginRight: 4 }}>PARTICIPANTE</span>
                   {!data.participants.length && <span style={{ fontSize: 14, color: "var(--silver)" }}>Agrega participantes primero</span>}
                   {renderPartChips()}
-                  {canEdit && <button className="btn btn-ghost" style={{ marginLeft: "auto" }} onClick={resetBracket}>↺ Reiniciar</button>}
+                  {person && !hideBracket && (
+                    <div className="bk-zoom" style={{ marginLeft: "auto" }}>
+                      <button className="btn btn-ghost bk-zoom-btn" title="Alejar" onClick={() => setBkZoom(z => Math.max(0.5, +(z - 0.1).toFixed(2)))}>−</button>
+                      <span style={{ fontSize: 12, color: "var(--silver)", minWidth: 40, textAlign: "center", fontFamily: "'Oswald',sans-serif" }}>{Math.round(bkZoom * 100)}%</span>
+                      <button className="btn btn-ghost bk-zoom-btn" title="Acercar" onClick={() => setBkZoom(z => Math.min(1.3, +(z + 0.1).toFixed(2)))}>+</button>
+                      <button className="btn btn-ghost" style={{ fontSize: 11, padding: "6px 10px" }} title="Restablecer zoom" onClick={() => setBkZoom(1)}>100%</button>
+                    </div>
+                  )}
+                  {canEdit && <button className="btn btn-ghost" style={{ marginLeft: person && !hideBracket ? 0 : "auto" }} onClick={resetBracket}>↺ Reiniciar</button>}
                 </div>
               </div>
 
@@ -1946,7 +2307,7 @@ export default function App() {
                 <div className="glass" style={{ borderRadius: 14, padding: "36px", textAlign: "center", color: "var(--silver)", fontSize: 14 }}>🔒 El cuadro de eliminación de las IA está oculto.</div>
               ) : (<>
                 <div className="bracket-scroll">
-                  <div className={`bracket${canEdit ? "" : " bk-readonly"}`}>
+                  <div className={`bracket${canEdit ? "" : " bk-readonly"}`} style={{ zoom: bkZoom }}>
                     {roundsData.map((R) => (
                       <div key={R.id} className="bk-round">
                         <div className="bk-round-head">{R.label}</div>
