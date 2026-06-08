@@ -764,6 +764,20 @@ const CSS = `
     .pod-flag { font-size:28px !important; }
     .pod-medal { font-size:24px !important; }
   }
+
+  /* ═══ BANNER NUEVA VERSIÓN ═══ */
+  .update-banner {
+    position:fixed; left:50%; bottom:18px; transform:translateX(-50%);
+    z-index:500; display:flex; align-items:center; gap:14px; flex-wrap:wrap; justify-content:center;
+    max-width:calc(100vw - 24px);
+    padding:11px 16px; border-radius:14px;
+    background:rgba(8,16,40,0.97); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(245,158,11,0.5); box-shadow:0 10px 30px rgba(0,0,0,0.55);
+    font-family:'DM Sans',sans-serif; font-size:14px; color:var(--white); font-weight:500;
+    animation:upIn 0.4s cubic-bezier(0.2,0.8,0.2,1) both;
+  }
+  .update-banner .btn { padding:7px 16px; }
+  @keyframes upIn { 0%{opacity:0; transform:translate(-50%,18px);} 100%{opacity:1; transform:translate(-50%,0);} }
 `;
 
 /* ═══════════════════════ SEARCHABLE SELECT ═══════════════════════ */
@@ -875,11 +889,42 @@ export default function App() {
   const [formTip,    setFormTip] = useState(null); // { team, idx }
   const tipTimer = useRef(null);
   const [now, setNow] = useState(Date.now());
+  const [updateReady, setUpdateReady] = useState(false);
+  const newVerRef = useRef(false);
 
   /* Reloj para la cuenta regresiva */
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
+  }, []);
+
+  /* Detección de nueva versión desplegada (para pestañas ya abiertas) */
+  useEffect(() => {
+    const hashOf = (s) => (String(s || "").match(/index-([A-Za-z0-9_-]+)\.js/) || [])[1];
+    const curHash = hashOf([...document.querySelectorAll("script[src]")]
+      .map((s) => s.getAttribute("src")).find((s) => s && /\/assets\/index-.*\.js/.test(s)));
+    if (!curHash) return; // dev mode: no hay bundle hasheado
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const r = await fetch("/", { cache: "no-store" });
+        if (!r.ok) return;
+        const newHash = hashOf(await r.text());
+        if (newHash && newHash !== curHash && !cancelled) {
+          newVerRef.current = true;
+          setUpdateReady(true);
+        }
+      } catch { /* sin red: reintenta luego */ }
+    };
+    const id = setInterval(check, 120000); // cada 2 min
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      if (newVerRef.current) window.location.reload(); // al volver a la pestaña, se actualiza solo
+      else check();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    const t0 = setTimeout(check, 8000);
+    return () => { cancelled = true; clearInterval(id); clearTimeout(t0); document.removeEventListener("visibilitychange", onVis); };
   }, []);
 
   /* Cerrar tooltip de forma al tocar fuera */
@@ -1111,6 +1156,14 @@ export default function App() {
   return (
     <div className="stadium-bg" style={{ minHeight: "100vh", color: "var(--white)", fontFamily: "'DM Sans',sans-serif" }}>
       <style>{CSS}</style>
+
+      {/* ══ BANNER NUEVA VERSIÓN ══ */}
+      {updateReady && (
+        <div className="update-banner">
+          <span>🔄 Hay una nueva versión disponible</span>
+          <button className="btn btn-primary" onClick={() => window.location.reload()}>Actualizar</button>
+        </div>
+      )}
 
       {/* ══ HEADER ══ */}
       <header style={{ borderBottom: "1px solid rgba(148,163,184,0.1)", padding: "16px 20px" }}>
