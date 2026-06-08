@@ -25,6 +25,25 @@ const AVATAR_ICONS = [
   "🦁","🐯","🐻","🦅","🐺","🐉","🦊","🐸","🐼","🦈","🐙","🦄","🐲","🐮","🦓","🐔",
 ];
 
+/* ═══════════════════════ NOTAS DE VERSIÓN ═══════════════════════ */
+/* La más reciente arriba. Al cambiar la primera versión, el pop-up de novedades
+   vuelve a aparecer una vez para todos. Se muestran las 2 últimas. */
+const CHANGELOG = [
+  { v: "1.3", date: "8 jun", items: [
+    "🐛 Arreglado el selector de Premios que se tapaba con la tarjeta de abajo.",
+    "📝 Notas de versión: este aviso con los cambios al actualizar.",
+  ]},
+  { v: "1.2", date: "8 jun", items: [
+    "🔄 La app avisa cuando hay una versión nueva y se actualiza sola (sin recargar a mano).",
+  ]},
+  { v: "1.1", date: "8 jun", items: [
+    "🏆 Clasificación con podio, avatares y barras de puntos.",
+    "🏟️ Portada con banderas anfitrionas y líder actual.",
+    "🎖️ Premios muestran la bandera de tu elección; Grupos marcan quién clasifica.",
+    "🔒 Tu perfil arranca deseleccionado (nadie ve tus predicciones sin tu clave).",
+  ]},
+];
+
 /* ═══════════════════════ UTILS ═══════════════════════ */
 const todayStr = () => new Date().toISOString().split("T")[0];
 const isLocked  = (date) => date && date <= todayStr();
@@ -530,6 +549,9 @@ const CSS = `
 
   /* ═══ EXTRAS CARDS ═══ */
   .extras-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
+  /* Eleva la tarjeta/columna cuyo selector está abierto para que su panel
+     no quede tapado por las tarjetas de abajo */
+  .extras-grid > div:has(.ss-panel) { position:relative; z-index:50; }
   .extra-card {
     border-radius:16px; padding:18px;
     border:1px solid var(--glass-b);
@@ -778,6 +800,17 @@ const CSS = `
   }
   .update-banner .btn { padding:7px 16px; }
   @keyframes upIn { 0%{opacity:0; transform:translate(-50%,18px);} 100%{opacity:1; transform:translate(-50%,0);} }
+
+  /* ═══ POP-UP NOTAS DE VERSIÓN ═══ */
+  .notes-pop { border:1px solid rgba(245,158,11,0.35); animation:notesIn 0.35s cubic-bezier(0.2,0.8,0.2,1) both; }
+  @keyframes notesIn { 0%{opacity:0; transform:scale(0.94) translateY(10px);} 100%{opacity:1; transform:scale(1) translateY(0);} }
+  .notes-x {
+    position:absolute; top:12px; right:12px; width:28px; height:28px; border-radius:8px;
+    background:rgba(148,163,184,0.12); border:1px solid rgba(148,163,184,0.2);
+    color:var(--silver-l); font-size:13px; cursor:pointer; line-height:1;
+    display:flex; align-items:center; justify-content:center; transition:all 0.15s;
+  }
+  .notes-x:hover { background:rgba(244,63,94,0.18); border-color:rgba(244,63,94,0.4); color:var(--rose); }
 `;
 
 /* ═══════════════════════ SEARCHABLE SELECT ═══════════════════════ */
@@ -891,6 +924,18 @@ export default function App() {
   const [now, setNow] = useState(Date.now());
   const [updateReady, setUpdateReady] = useState(false);
   const newVerRef = useRef(false);
+  const [showNotes, setShowNotes] = useState(false);
+
+  /* Pop-up de novedades: aparece una vez cuando hay una versión nueva */
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("pollaSeenVersion") !== CHANGELOG[0].v) setShowNotes(true);
+    } catch { /* sin localStorage */ }
+  }, []);
+  const dismissNotes = () => {
+    try { localStorage.setItem("pollaSeenVersion", CHANGELOG[0].v); } catch {}
+    setShowNotes(false);
+  };
 
   /* Reloj para la cuenta regresiva */
   useEffect(() => {
@@ -1162,6 +1207,31 @@ export default function App() {
         <div className="update-banner">
           <span>🔄 Hay una nueva versión disponible</span>
           <button className="btn btn-primary" onClick={() => window.location.reload()}>Actualizar</button>
+        </div>
+      )}
+
+      {/* ══ POP-UP NOTAS DE VERSIÓN ══ */}
+      {showNotes && (
+        <div className="modal" onClick={e => e.target === e.currentTarget && dismissNotes()}>
+          <div className="glass notes-pop" style={{ borderRadius: 16, padding: 24, width: 420, maxWidth: "92vw", maxHeight: "85vh", overflowY: "auto", position: "relative" }}>
+            <button onClick={dismissNotes} title="Cerrar" className="notes-x">✕</button>
+            <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 22, fontWeight: 700, letterSpacing: 1.5, marginBottom: 2 }}>✨ NOVEDADES</div>
+            <div style={{ fontSize: 12.5, color: "var(--silver)", marginBottom: 16 }}>Esto es lo nuevo en la app:</div>
+            {CHANGELOG.slice(0, 2).map((rel, i) => (
+              <div key={rel.v} style={{ marginBottom: i === 0 ? 16 : 4 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 13, color: "var(--navy-0)", background: "var(--gold-l)", borderRadius: 20, padding: "2px 10px", letterSpacing: 0.5 }}>v{rel.v}</span>
+                  <span style={{ fontSize: 11.5, color: "var(--silver)" }}>{rel.date}</span>
+                </div>
+                <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 7 }}>
+                  {rel.items.map((it, j) => (
+                    <li key={j} style={{ fontSize: 13.5, color: "var(--silver-l)", lineHeight: 1.5, paddingLeft: 4 }}>{it}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            <button className="btn btn-primary" style={{ width: "100%", padding: "11px 0", marginTop: 8 }} onClick={dismissNotes}>¡Listo!</button>
+          </div>
         </div>
       )}
 
