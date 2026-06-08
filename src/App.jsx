@@ -288,6 +288,11 @@ const CSS = `
     border-color:var(--blue-l);
     box-shadow:0 0 12px rgba(59,130,246,0.3);
   }
+  .flag-bubble.win {
+    background:rgba(245,158,11,0.2);
+    border-color:var(--gold);
+    box-shadow:0 0 14px rgba(245,158,11,0.4);
+  }
 
   .score-inp {
     width:42px; height:40px;
@@ -654,6 +659,44 @@ const CSS = `
   .pod-1 { height:120px; background:linear-gradient(180deg, rgba(245,158,11,0.32), rgba(245,158,11,0.05)); border:1.5px solid rgba(245,158,11,0.55); border-bottom:none; box-shadow:0 0 26px rgba(245,158,11,0.25); }
   .pod-2 { height:88px; background:linear-gradient(180deg, rgba(203,213,225,0.26), rgba(203,213,225,0.04)); border:1.5px solid rgba(203,213,225,0.4); border-bottom:none; }
   .pod-3 { height:64px; background:linear-gradient(180deg, rgba(205,127,50,0.3), rgba(205,127,50,0.05)); border:1.5px solid rgba(205,127,50,0.45); border-bottom:none; }
+  /* Podio de participantes (clasificación) */
+  .pod-av-lg { width:54px; height:54px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:26px; font-family:'Oswald',sans-serif; font-weight:700; color:var(--white); background:rgba(37,99,235,0.22); border:2px solid rgba(59,130,246,0.4); }
+  .pod-1 .pod-av-host, .pod .pod-av-lg.gold { border-color:var(--gold); box-shadow:0 0 16px rgba(245,158,11,0.45); }
+  .pod-pts { font-family:'Oswald',sans-serif; font-weight:700; font-size:18px; color:var(--gold-l); letter-spacing:0.5px; }
+  .pod-sub { font-size:10px; color:var(--silver); letter-spacing:1px; }
+
+  /* ═══ LEADERBOARD (clasificación) ═══ */
+  .lb-av { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:18px; font-family:'Oswald',sans-serif; font-weight:700; color:var(--white); background:rgba(37,99,235,0.18); border:1.5px solid rgba(59,130,246,0.3); flex-shrink:0; }
+  .lb-av.gold { border-color:var(--gold); background:rgba(245,158,11,0.16); box-shadow:0 0 12px rgba(245,158,11,0.3); }
+  .lb-bar { height:5px; border-radius:3px; background:rgba(148,163,184,0.12); overflow:hidden; margin-top:6px; max-width:260px; }
+  .lb-bar-fill { height:100%; border-radius:3px; background:linear-gradient(90deg,var(--blue),var(--blue-xl)); transition:width 0.7s cubic-bezier(0.2,0.8,0.2,1); }
+  .lb-bar-fill.gold { background:linear-gradient(90deg,var(--gold),var(--gold-l)); }
+  .lb-card.lb-me { background:rgba(37,99,235,0.12) !important; box-shadow:inset 3px 0 0 var(--blue-l); }
+  .lb-me-badge { font-size:9px; font-weight:700; letter-spacing:1px; color:var(--blue-xl); background:rgba(59,130,246,0.18); border:1px solid rgba(59,130,246,0.4); border-radius:20px; padding:1px 7px; margin-left:7px; vertical-align:middle; }
+
+  /* ═══ HERO host flags ═══ */
+  .host-flags { display:inline-flex; gap:3px; font-size:14px; vertical-align:middle; }
+  .leader-chip { display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:30px; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.4); font-size:12px; color:var(--gold-l); font-weight:600; }
+
+  /* ═══ Banner de predicciones completas ═══ */
+  .done-banner {
+    position:relative; overflow:hidden; margin-top:12px; padding:11px 16px; border-radius:12px;
+    text-align:center; font-family:'Oswald',sans-serif; font-weight:600; letter-spacing:0.5px; font-size:14.5px;
+    color:var(--emerald);
+    background:linear-gradient(90deg, rgba(16,185,129,0.10), rgba(16,185,129,0.20), rgba(16,185,129,0.10));
+    border:1px solid rgba(16,185,129,0.4);
+    animation:doneIn 0.5s cubic-bezier(0.2,0.8,0.2,1) both;
+  }
+  @keyframes doneIn { 0%{opacity:0; transform:scale(0.96);} 100%{opacity:1; transform:scale(1);} }
+
+  /* ═══ Premios: bandera de la elección ═══ */
+  .extra-pick-flag {
+    font-size:30px; line-height:1; width:46px; height:46px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(245,158,11,0.10); border:1.5px solid rgba(245,158,11,0.35);
+    animation:pop 0.25s ease both;
+  }
+  .extra-card.picked { border-color:rgba(245,158,11,0.45); box-shadow:0 0 18px rgba(245,158,11,0.12); }
 
   /* ═══ MOBILE ═══ */
   @media (max-width: 640px) {
@@ -853,7 +896,8 @@ export default function App() {
       if (snap.exists()) {
         const s = snap.data();
         setData(s);
-        setPerson(p => p || (s.participants?.[0] ?? ""));
+        // No auto-seleccionar perfil: arranca deseleccionado (no se ven predicciones sin elegir)
+        setPerson(p => (p && s.participants?.includes(p) ? p : ""));
       }
       setLoaded(true);
     }, () => setLoaded(true));
@@ -1072,11 +1116,12 @@ export default function App() {
       <header style={{ borderBottom: "1px solid rgba(148,163,184,0.1)", padding: "16px 20px" }}>
         <div style={{ maxWidth: 1080, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
-            <h1 className="shimmer-text header-title" style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, letterSpacing: 4, marginBottom: 3 }}>
-              ⚽ POLLA MUNDIALERA 2026
+            <h1 className="header-title" style={{ fontFamily: "'Oswald',sans-serif", fontSize: 26, fontWeight: 700, letterSpacing: 4, marginBottom: 3, display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ filter: "drop-shadow(0 0 6px rgba(59,130,246,0.5))" }}>⚽</span>
+              <span className="shimmer-text">POLLA MUNDIALERA 2026</span>
             </h1>
             <div className="header-meta" style={{ fontSize: 12, color: "var(--silver)", letterSpacing: 1.5, fontWeight: 500 }}>
-              {data.participants.length} PARTICIPANTE{data.participants.length !== 1 ? "S" : ""} &nbsp;·&nbsp; {totalRes}/72 RESULTADOS &nbsp;·&nbsp; FASE DE GRUPOS 11–27 JUN
+              {data.participants.length} PARTICIPANTE{data.participants.length !== 1 ? "S" : ""} &nbsp;·&nbsp; {totalRes}/72 RESULTADOS &nbsp;·&nbsp; <span className="host-flags">🇨🇦🇲🇽🇺🇸</span> ANFITRIONES
             </div>
           </div>
           <div className="header-btns" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -1297,9 +1342,14 @@ export default function App() {
                 <span className="countdown-live">🔴 ¡EL MUNDIAL ESTÁ EN MARCHA!</span>
               )}
             </div>
-            <p style={{ fontSize: 11.5, color: "var(--silver)", textAlign: "center", letterSpacing: 0.3, marginTop: 10 }}>
-              🌅 Los resultados de cada jornada se actualizan a la mañana del día siguiente.
-            </p>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 10, flexWrap: "wrap" }}>
+              {sorted.length > 0 && grandTotal(sorted[0], data) > 0 && (
+                <span className="leader-chip">👑 Líder: {avatarFor(sorted[0])} {displayName(sorted[0])} · {grandTotal(sorted[0], data)} pts</span>
+              )}
+              <p style={{ fontSize: 11.5, color: "var(--silver)", textAlign: "center", letterSpacing: 0.3 }}>
+                🌅 Los resultados de cada jornada se actualizan a la mañana del día siguiente.
+              </p>
+            </div>
           </div>
         );
       })()}
@@ -1326,8 +1376,27 @@ export default function App() {
                   <span style={{ fontSize: 12, color: filledP === 72 ? "var(--emerald)" : "var(--silver)", fontWeight: 600 }}>{Math.round((filledP / 72) * 100)}%</span>
                 </div>
               )}
+              {person && filledP === 72 && (
+                <div className="done-banner">
+                  {["🎉","🎊","✨","⭐","🍀","🎉","⚽","🎊"].map((c, i) => (
+                    <span key={i} className="confetti" style={{ left: `${6 + i * 12}%`, animationDuration: `${2 + (i % 4) * 0.6}s`, animationDelay: `${(i % 5) * 0.3}s` }}>{c}</span>
+                  ))}
+                  <span style={{ position: "relative" }}>🎉 ¡Predicciones completas! Mucha suerte 🍀</span>
+                </div>
+              )}
             </div>
 
+            {!person ? (
+              <div className="glass" style={{ borderRadius: 14, padding: "44px 24px", textAlign: "center" }}>
+                <div style={{ fontSize: 40, marginBottom: 10 }}>👤</div>
+                <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 20, fontWeight: 600, letterSpacing: 1, marginBottom: 6 }}>Selecciona tu perfil</div>
+                <div style={{ fontSize: 13.5, color: "var(--silver)", maxWidth: 360, margin: "0 auto", lineHeight: 1.6 }}>
+                  {data.participants.length
+                    ? "Elige tu perfil arriba e ingresa tu contraseña para ver y editar tus predicciones."
+                    : "Agrega participantes en la pestaña 👥 para comenzar."}
+                </div>
+              </div>
+            ) : (<>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14, alignItems: "center" }}>
               <span style={{ fontSize: 11, color: "var(--silver)", letterSpacing: 1.5, marginRight: 4, fontWeight: 500 }}>GRUPO</span>
               {GK.map(g => {
@@ -1383,7 +1452,7 @@ export default function App() {
                       <button className="h2h-btn" title="Historial entre estos equipos" onClick={() => setH2h(m)}>ℹ️</button>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div className={`flag-bubble${hasRes && res.h > res.a ? " active" : ""}`}>{FL[m.home] || "🏳️"}</div>
+                      <div className={`flag-bubble${hasRes && res.h > res.a ? " win" : ""}`}>{FL[m.home] || "🏳️"}</div>
                       <div style={{ minWidth: 0 }}>
                         <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 600, letterSpacing: 0.3 }}>{m.home}</span>
                         {renderForm(m.home, false)}
@@ -1409,7 +1478,7 @@ export default function App() {
                         <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 600, textAlign: "right", letterSpacing: 0.3 }}>{m.away}</span>
                         {renderForm(m.away, true)}
                       </div>
-                      <div className={`flag-bubble${hasRes && res.a > res.h ? " active" : ""}`}>{FL[m.away] || "🏳️"}</div>
+                      <div className={`flag-bubble${hasRes && res.a > res.h ? " win" : ""}`}>{FL[m.away] || "🏳️"}</div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
                       {adminMode ? (
@@ -1456,6 +1525,7 @@ export default function App() {
                 </div>
               )}
             </div>
+            </>)}
           </div>
         )}
 
@@ -1505,8 +1575,11 @@ export default function App() {
                     const opts = optsFor(c.type);
                     const flagFor = (v) => c.type === "country" ? (FL[v] || "🏳️") : (FL[PLAYER_COUNTRY[v]] || "🏳️");
                     return (
-                      <div key={c.id} className={`extra-card${hit ? " done" : ""}`}>
-                        <div className="extra-icon">{c.icon}</div>
+                      <div key={c.id} className={`extra-card lift${hit ? " done" : ""}${pick && !resolved ? " picked" : ""}`}>
+                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                          <div className="extra-icon">{c.icon}</div>
+                          {pick && <div className="extra-pick-flag" title={pick}>{flagFor(pick)}</div>}
+                        </div>
                         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
                           <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 19, fontWeight: 600, letterSpacing: 1 }}>{c.label.toUpperCase()}</span>
                           <span className="extra-pts">+{c.pts}</span>
@@ -1555,12 +1628,49 @@ export default function App() {
         })()}
 
         {/* ════ CLASIFICACIÓN ════ */}
-        {tab === "clasificacion" && (
+        {tab === "clasificacion" && (() => {
+          const maxPts = sorted.length ? Math.max(1, grandTotal(sorted[0], data)) : 1;
+          const leaderPts = sorted.length ? grandTotal(sorted[0], data) : 0;
+          const showPodium = sorted.length >= 2 && leaderPts > 0;
+          const top3 = sorted.slice(0, 3);
+          const podConfetti = ["🎉","🎊","✨","⭐","🏅","🎉","⭐","🎊"];
+          return (
           <div>
-            <div className="section-header" style={{ marginBottom: 20, display: "flex", alignItems: "baseline", gap: 12 }}>
+            <div className="section-header" style={{ marginBottom: 18, display: "flex", alignItems: "baseline", gap: 12 }}>
               <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 30, fontWeight: 700, letterSpacing: 3 }}>CLASIFICACIÓN</h2>
               <span style={{ fontSize: 13, color: "var(--silver)" }}>fase de grupos · {totalRes}/72 resultados registrados</span>
             </div>
+
+            {/* Podio de líderes */}
+            {showPodium && (
+              <div className="podium-wrap" style={{ marginTop: 0, marginBottom: 24 }}>
+                <div className="podium">
+                  {[{ rank: 2, name: top3[1], cls: "pod-2", medal: "🥈" },
+                    { rank: 1, name: top3[0], cls: "pod-1", medal: "🥇" },
+                    { rank: 3, name: top3[2], cls: "pod-3", medal: "🥉" }].map(({ rank, name, cls, medal }) => (
+                    <div key={rank} className="pod">
+                      {name ? (
+                        <>
+                          <div className="pod-top">
+                            <div className="pod-medal">{medal}</div>
+                            <div className={`pod-av-lg${rank === 1 ? " gold" : ""}`}>{avatarFor(name)}</div>
+                            <div className="pod-name">{displayName(name)}</div>
+                            <div className="pod-pts">{grandTotal(name, data)} pts</div>
+                          </div>
+                          <div className={`pod-base ${cls}`}>
+                            {rank === 1 && podConfetti.map((c, i) => (
+                              <span key={i} className="confetti" style={{ left: `${6 + i * 11}%`, animationDuration: `${2 + (i % 4) * 0.6}s`, animationDelay: `${(i % 5) * 0.3}s` }}>{c}</span>
+                            ))}
+                            <span className="pod-rank">{rank}</span>
+                          </div>
+                        </>
+                      ) : <div className="pod-top"><div className="pod-empty">—</div></div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="glass" style={{ borderRadius: 14, overflow: "hidden" }}>
               <div className="lb-card" style={{ background: "rgba(37,99,235,0.1)", borderBottom: "1px solid rgba(148,163,184,0.1)", fontSize: 10, color: "var(--silver)", letterSpacing: 1.5, fontWeight: 600 }}>
                 <div>#</div><div>PARTICIPANTE</div>
@@ -1577,14 +1687,19 @@ export default function App() {
                 const winners = Object.values(MATCHES).flat().filter(m => getPts(data.predictions[name]?.[m.id], data.results[m.id]) === 1).length;
                 const medal = ["🥇", "🥈", "🥉"][i] || (i + 1);
                 const isTop = i === 0;
+                const isMe = !!person && person === name;
+                const barPct = Math.round((pts / maxPts) * 100);
                 return (
-                  <div key={name} className="lb-card" style={{ background: isTop ? "rgba(245,158,11,0.06)" : "transparent" }}>
+                  <div key={name} className={`lb-card row-anim${isMe ? " lb-me" : ""}`} style={{ animationDelay: `${Math.min(i, 12) * 40}ms`, background: isTop ? "rgba(245,158,11,0.06)" : undefined }}>
                     <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: i < 3 ? 22 : 16, color: i < 3 ? "var(--gold-l)" : "var(--silver)", fontWeight: 700 }}>{medal}</div>
-                    <div>
-                      <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 17, fontWeight: 600, color: isTop ? "var(--gold-l)" : "var(--white)", letterSpacing: 0.5 }}>
-                        {iconFor(name) && <span style={{ marginRight: 6 }}>{iconFor(name)}</span>}{displayName(name)}
+                    <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+                      <div className={`lb-av${isTop ? " gold" : ""}`}>{avatarFor(name)}</div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 17, fontWeight: 600, color: isTop ? "var(--gold-l)" : "var(--white)", letterSpacing: 0.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {displayName(name)}{isMe && <span className="lb-me-badge">TÚ</span>}
+                        </div>
+                        <div className="lb-bar"><div className={`lb-bar-fill${isTop ? " gold" : ""}`} style={{ width: `${barPct}%` }} /></div>
                       </div>
-                      {played > 0 && <div style={{ fontSize: 11, color: "var(--silver)", marginTop: 1 }}>{played} partidos con resultado</div>}
                     </div>
                     <div style={{ textAlign: "center", color: "var(--silver)", fontSize: 14 }}>{played}</div>
                     <div style={{ textAlign: "center", fontFamily: "'Oswald',sans-serif", fontSize: 17, fontWeight: 700, color: "var(--gold)" }}>{exact}</div>
@@ -1602,7 +1717,8 @@ export default function App() {
               ))}
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* ════ LA LLAVE ════ */}
         {tab === "llave" && (
@@ -1630,7 +1746,8 @@ export default function App() {
                       <div style={{ textAlign: "center" }}>DG</div><div style={{ textAlign: "center" }}>PTS</div>
                     </div>
                     {st.map((row, i) => (
-                      <div key={row.t} className={`st-row${i < 2 ? " top" : ""}${i === 2 ? " div" : ""}`}>
+                      <div key={row.t} className={`st-row${i < 2 ? " top" : ""}${i === 2 ? " div" : ""}`}
+                        style={{ borderLeft: `3px solid ${i < 2 ? "var(--emerald)" : i === 2 ? "rgba(245,158,11,0.6)" : "transparent"}` }}>
                         <div style={{ fontSize: 18, lineHeight: 1 }}>{FL[row.t] || "🏳️"}</div>
                         <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 12, fontWeight: i < 2 ? 600 : 400, color: i < 2 ? "var(--white)" : "var(--silver)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {row.t}
@@ -1646,7 +1763,14 @@ export default function App() {
                 );
               })}
             </div>
-            <div style={{ marginTop: 14 }} className="glass-sm">
+            <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {[{ c: "var(--emerald)", l: "1° y 2° clasifican directo" }, { c: "var(--gold)", l: "3° opta a mejor tercero" }].map(x => (
+                <div key={x.l} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", background: `${x.c}14`, border: `1px solid ${x.c}55`, borderRadius: 20, fontSize: 12, color: "var(--silver-l)", fontWeight: 500 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 3, background: x.c, display: "inline-block" }} />{x.l}
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 12 }} className="glass-sm">
               <div style={{ padding: "12px 16px", borderRadius: 10, fontSize: 12, color: "var(--silver)" }}>
                 ℹ️  Jornadas finales simultáneas: Grupos A–C el 24 jun · D–F el 25 jun · G–H el 26 jun · I–L el 27 jun
               </div>
