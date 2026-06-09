@@ -493,6 +493,9 @@ const CSS = `
   .form-tip-score { font-family:'Oswald',sans-serif; font-size:22px; font-weight:700; color:var(--white); letter-spacing:1px; }
   .form-tip-sub { font-size:12.5px; color:var(--silver-l); }
   .form-tip-date { font-size:10.5px; color:var(--silver); }
+  .ach-tip { white-space:normal; max-width:230px; pointer-events:none; }
+  .ach-tip-desc { font-size:12.5px; color:var(--silver-l); line-height:1.4; }
+  .ach-tip-status { font-size:10.5px; color:var(--silver); margin-top:1px; }
   @keyframes tipIn { 0% { opacity:0; transform:translate(-50%, calc(-100% - 6px)); } 100% { opacity:1; transform:translate(-50%, calc(-100% - 12px)); } }
   .h2h-btn {
     width:22px; height:22px; border-radius:6px; margin-top:3px;
@@ -732,7 +735,8 @@ const CSS = `
   .mini-go.icon { padding:6px 10px; font-size:13.5px; }
   .pend-notice { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:11px 16px; border-radius:12px; margin-bottom:16px; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.4); color:var(--gold-l); font-size:13.5px; font-weight:500; }
   .logros { display:flex; gap:7px; flex-wrap:wrap; margin-top:12px; width:100%; }
-  .logro { width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:17px; background:rgba(148,163,184,0.08); border:1px solid rgba(148,163,184,0.15); filter:grayscale(1) opacity(0.4); cursor:default; transition:all 0.15s; }
+  .logro { width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:17px; background:rgba(148,163,184,0.08); border:1px solid rgba(148,163,184,0.15); filter:grayscale(1) opacity(0.4); cursor:pointer; transition:all 0.15s; }
+  .logro:hover { transform:translateY(-2px); }
   .logro.got { filter:none; background:rgba(245,158,11,0.14); border-color:rgba(245,158,11,0.4); box-shadow:0 0 10px rgba(245,158,11,0.2); }
   .insight-click { cursor:pointer; }
   .insight-click:hover { border-color:var(--blue-l); }
@@ -1031,6 +1035,7 @@ export default function App() {
   const [pendingEdit, setPendingEdit] = useState(false);
   const [h2hMatch,   setH2h]   = useState(null);
   const [formTip,    setFormTip] = useState(null); // { team, idx }
+  const [achTip,     setAchTip]  = useState(null); // { name, how, got, x, y }
   const tipTimer = useRef(null);
   const [now, setNow] = useState(Date.now());
   const [updateReady, setUpdateReady] = useState(false);
@@ -1090,6 +1095,13 @@ export default function App() {
     document.addEventListener("click", onDoc);
     return () => document.removeEventListener("click", onDoc);
   }, [formTip]);
+
+  useEffect(() => {
+    if (!achTip) return;
+    const onDoc = (e) => { if (!e.target.closest?.(".logro")) setAchTip(null); };
+    document.addEventListener("click", onDoc);
+    return () => document.removeEventListener("click", onDoc);
+  }, [achTip]);
 
   /* Firestore real-time sync */
   useEffect(() => {
@@ -1269,6 +1281,10 @@ export default function App() {
   const openTip = (el, payload) => {
     const r = el.getBoundingClientRect();
     setFormTip({ ...payload, x: r.left + r.width / 2, y: r.top });
+  };
+  const openAch = (el, b) => {
+    const r = el.getBoundingClientRect();
+    setAchTip({ name: b.name, how: b.how, got: b.got, ic: b.ic, x: r.left + r.width / 2, y: r.top });
   };
 
   /* Nombre e ícono de visualización (el emoji inicial se vuelve ícono) */
@@ -1496,6 +1512,16 @@ export default function App() {
           </div>
         );
       })()}
+
+      {achTip && (
+        <div className="form-tip-fixed ach-tip" style={{ left: achTip.x, top: achTip.y }}>
+          <span className="form-tip-top" style={{ color: achTip.got ? "var(--gold-l)" : "var(--silver)" }}>
+            <span style={{ fontSize: 15 }}>{achTip.ic}</span>{achTip.name} {achTip.got ? "· ✓" : "· 🔒"}
+          </span>
+          <span className="ach-tip-desc">{achTip.how}</span>
+          <span className="ach-tip-status">{achTip.got ? "¡Conseguido!" : "Aún no conseguido"}</span>
+        </div>
+      )}
 
       {/* ══ H2H MODAL ══ */}
       {h2hMatch && (() => {
@@ -2110,7 +2136,10 @@ export default function App() {
                   <div className="logros">
                     <span style={{ fontSize: 10, letterSpacing: 1, color: "var(--silver)", fontWeight: 600, alignSelf: "center", marginRight: 2 }}>LOGROS</span>
                     {badges.map(b => (
-                      <span key={b.name} className={`logro${b.got ? " got" : ""}`} title={b.got ? `✓ ${b.name}` : `${b.name} — ${b.how}`}>{b.ic}</span>
+                      <span key={b.name} className={`logro${b.got ? " got" : ""}`}
+                        onMouseEnter={(ev) => openAch(ev.currentTarget, b)}
+                        onMouseLeave={() => setAchTip(t => (t && t.name === b.name ? null : t))}
+                        onClick={(ev) => { ev.stopPropagation(); achTip && achTip.name === b.name ? setAchTip(null) : openAch(ev.currentTarget, b); }}>{b.ic}</span>
                     ))}
                   </div>
                 </div>
