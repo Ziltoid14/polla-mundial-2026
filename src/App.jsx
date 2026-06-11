@@ -29,6 +29,10 @@ const AVATAR_ICONS = [
 /* La más reciente arriba. Al cambiar la primera versión, el pop-up de novedades
    vuelve a aparecer una vez para todos. Se muestran las 2 últimas. */
 const CHANGELOG = [
+  { v: "1.5", date: "11 jun", items: [
+    "🆚 Nueva pestaña 'Comparar': enfréntate a otro participante (o a todos) en los pronósticos del día, con mensajes según el riesgo/coincidencias y tabla de quién predijo lo mismo.",
+    "🏅 Los logros de 'Tu resumen' muestran su descripción al pasar el mouse o tocar.",
+  ]},
   { v: "1.4", date: "8 jun", items: [
     "📅 Nueva pestaña 'Hoy': próximos partidos y resultados, con tu predicción y acceso directo a predecir.",
     "📊 Datos curiosos: favoritos, el más arriesgado/cauto, coincidencias y más.",
@@ -755,6 +759,34 @@ const CSS = `
   .insight-val { font-family:'Oswald',sans-serif; font-size:16px; font-weight:700; color:var(--white); margin-top:2px; }
   .insight-sub { font-size:11px; color:var(--silver); }
 
+  /* ═══ COMPARAR ═══ */
+  .cmp-day { padding:6px 12px; border-radius:20px; font-size:12px; font-weight:600; cursor:pointer; background:rgba(148,163,184,0.08); border:1px solid var(--glass-b); color:var(--silver-l); transition:all 0.15s; }
+  .cmp-day.active { background:rgba(245,158,11,0.16); border-color:var(--gold); color:var(--gold-l); }
+  .cmp-chip { display:inline-flex; align-items:center; gap:8px; padding:7px 14px 7px 7px; border-radius:30px; cursor:pointer; background:rgba(15,31,66,0.6); border:1px solid var(--glass-b); color:var(--white); font-size:14px; font-weight:500; transition:all 0.15s; }
+  .cmp-chip:hover { border-color:var(--blue-l); background:rgba(37,99,235,0.14); transform:translateY(-1px); }
+  .cmp-chip-av { width:28px; height:28px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:15px; font-family:'Oswald',sans-serif; font-weight:700; background:rgba(37,99,235,0.2); border:1px solid rgba(59,130,246,0.35); flex-shrink:0; }
+  .cmp-vs { display:flex; align-items:center; gap:12px; font-family:'Oswald',sans-serif; font-weight:700; font-size:16px; flex-wrap:wrap; }
+  .cmp-vs > span { display:inline-flex; align-items:center; gap:7px; }
+  .cmp-vs-x { color:var(--gold-l); font-size:13px; letter-spacing:1px; }
+  .cmp-msgs { display:flex; flex-direction:column; gap:8px; }
+  .cmp-msg { display:flex; align-items:center; gap:10px; padding:11px 15px; border-radius:12px; background:var(--glass); border:1px solid var(--glass-b); font-size:13.5px; color:var(--silver-l); }
+  .cmp-row { display:grid; grid-template-columns:1fr 92px 1fr 116px; gap:8px; align-items:center; padding:11px 16px; border-bottom:1px solid rgba(148,163,184,0.07); }
+  .cmp-row:last-child { border-bottom:none; }
+  .cmp-team { display:flex; align-items:center; gap:8px; min-width:0; }
+  .cmp-team .mf { font-size:18px; flex-shrink:0; }
+  .cmp-team .mn { font-family:'Oswald',sans-serif; font-size:13.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cmp-team.away { flex-direction:row-reverse; text-align:right; }
+  .cmp-scores { display:flex; align-items:center; justify-content:center; gap:8px; font-family:'Oswald',sans-serif; font-size:18px; font-weight:700; color:var(--white); }
+  .cmp-p-sep { color:var(--silver); font-size:13px; }
+  .cmp-verdict { text-align:right; font-size:11.5px; font-weight:600; }
+  .cmp-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .cmp-table th { padding:10px 8px; font-size:11px; letter-spacing:0.5px; color:var(--silver); background:rgba(37,99,235,0.1); text-align:center; font-weight:600; white-space:nowrap; line-height:1.3; }
+  .cmp-table td { padding:9px 8px; text-align:center; border-bottom:1px solid rgba(148,163,184,0.07); font-family:'Oswald',sans-serif; font-weight:600; color:var(--silver-l); white-space:nowrap; }
+  .cmp-table td:first-child { font-family:'DM Sans',sans-serif; font-weight:500; color:var(--white); }
+  .cmp-table tr:last-child td { border-bottom:none; }
+  .cmp-me td { background:rgba(37,99,235,0.1); }
+  .cmp-same { color:var(--gold-l) !important; background:rgba(245,158,11,0.14); }
+
   /* ═══ Banner de predicciones completas ═══ */
   .done-banner {
     position:relative; overflow:hidden; margin-top:12px; padding:11px 16px; border-radius:12px;
@@ -853,6 +885,13 @@ const CSS = `
     .mini-row > *:nth-child(4){ grid-area:a; }
     .mini-act { grid-area:x; text-align:center !important; min-width:0 !important; }
     .mini-team .mn { font-size:12.5px !important; }
+
+    /* Comparar — veredicto en segunda línea */
+    .cmp-row { grid-template-columns:1fr auto 1fr !important; grid-template-areas:"h s a" "v v v" !important; row-gap:6px !important; }
+    .cmp-row > *:nth-child(1){ grid-area:h; }
+    .cmp-row > *:nth-child(2){ grid-area:s; }
+    .cmp-row > *:nth-child(3){ grid-area:a; }
+    .cmp-row > *:nth-child(4){ grid-area:v; text-align:center !important; }
   }
 
   /* ═══ BANNER NUEVA VERSIÓN ═══ */
@@ -1008,6 +1047,8 @@ export default function App() {
   const [grp,    setGrp]    = useState("A");
   const [grpKey, setGrpKey] = useState(0);
   const [bkZoom, setBkZoom] = useState(1);
+  const [cmpWith, setCmpWith] = useState(null); // null = elegir, nombre, o "__ALL__"
+  const [cmpDay, setCmpDay]   = useState(null);
   const [person, setPerson] = useState("");
   const [adminMode,  setAdmin] = useState(false);
   const [showLogin,  setLogin] = useState(false);
@@ -1567,6 +1608,7 @@ export default function App() {
           {[
             { id: "predicciones", label: "⚽  Predicciones" },
             { id: "hoy", label: "📅  Hoy" },
+            { id: "comparar", label: "🆚  Comparar" },
             { id: "premios", label: "🎖️  Premios" },
             { id: "clasificacion", label: "🏆  Clasificación" },
             { id: "llave", label: "📊  Grupos" },
@@ -1968,6 +2010,154 @@ export default function App() {
                   </div>
                 )}
               </div>
+            </div>
+          );
+        })()}
+
+        {/* ════ COMPARAR ════ */}
+        {tab === "comparar" && (() => {
+          const today = todayStr();
+          const allM = Object.values(MATCHES).flat();
+          const lockedDates = [...new Set(allM.filter(m => isLocked(m.date)).map(m => m.date))].sort();
+          const day = (cmpDay && lockedDates.includes(cmpDay)) ? cmpDay : (lockedDates[lockedDates.length - 1] || null);
+          const dayMatches = day ? allM.filter(m => m.date === day).sort((a, b) => a.id < b.id ? -1 : 1) : [];
+          const isFilledC = pr => pr && pr.h !== "" && pr.h != null && pr.a !== "" && pr.a != null;
+          const predOf = (name, m) => data.predictions[name]?.[m.id];
+          const outc = pr => isFilledC(pr) ? Math.sign((+pr.h) - (+pr.a)) : null;
+          const head = (
+            <div className="section-header" style={{ marginBottom: 18, display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+              <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 30, fontWeight: 700, letterSpacing: 3 }}>COMPARAR</h2>
+              <span style={{ fontSize: 13, color: "var(--silver)" }}>pronósticos del día — ya bloqueados, sin trampa 😏</span>
+            </div>
+          );
+
+          if (!person) return (<div>{head}<div className="glass" style={{ borderRadius: 14, padding: "44px 24px", textAlign: "center" }}><div style={{ fontSize: 40, marginBottom: 10 }}>👤</div><div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 20, fontWeight: 600 }}>Selecciona tu perfil</div><div style={{ fontSize: 13.5, color: "var(--silver)", marginTop: 6 }}>Elígelo arriba para comparar tus pronósticos.</div></div></div>);
+          if (!lockedDates.length) return (<div>{head}<div className="glass" style={{ borderRadius: 14, padding: "44px 24px", textAlign: "center", color: "var(--silver)", fontSize: 14 }}>⏳ Las comparaciones se habilitan el <b>día de cada partido</b> (cuando los pronósticos quedan bloqueados). Aún no hay partidos.</div></div>);
+
+          const daySel = lockedDates.length > 1 ? (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+              <span style={{ fontSize: 11, color: "var(--silver)", letterSpacing: 1.5, marginRight: 4, fontWeight: 500 }}>DÍA</span>
+              {lockedDates.slice().reverse().map(dt => (
+                <button key={dt} className={`cmp-day${day === dt ? " active" : ""}`} onClick={() => { setCmpDay(dt); setCmpWith(null); }}>{fmtDate(dt)}{dt === today ? " · hoy" : ""}</button>
+              ))}
+            </div>
+          ) : null;
+
+          const others = data.participants.filter(p => p !== person);
+
+          if (!cmpWith) {
+            return (
+              <div>
+                {head}{daySel}
+                <div className="glass" style={{ borderRadius: 14, padding: "20px" }}>
+                  <div style={{ fontSize: 12, letterSpacing: 1, color: "var(--silver)", fontWeight: 600, marginBottom: 4 }}>¿CON QUIÉN TE COMPARAS?</div>
+                  <div style={{ fontSize: 13, color: "var(--silver)", marginBottom: 14 }}>Los pronósticos de <b style={{ color: "var(--gold-l)" }}>{displayName(person)}</b> del {fmtDate(day)} vs los de otro participante.</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {others.map(o => (
+                      <button key={o} className="cmp-chip" onClick={() => setCmpWith(o)}>
+                        <span className="cmp-chip-av">{avatarFor(o)}</span>{displayName(o)}
+                      </button>
+                    ))}
+                  </div>
+                  <button className="btn btn-primary" style={{ marginTop: 16, width: "100%", padding: "11px 0" }} onClick={() => setCmpWith("__ALL__")}>📊 Comparar con todos</button>
+                </div>
+              </div>
+            );
+          }
+
+          if (cmpWith === "__ALL__") {
+            return (
+              <div>
+                {head}{daySel}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+                  <button className="btn btn-ghost" onClick={() => setCmpWith(null)}>← Volver</button>
+                  <span style={{ fontSize: 13, color: "var(--silver)" }}>Todos · el {fmtDate(day)} · celdas <span style={{ color: "var(--gold-l)" }}>doradas</span> = igual a las tuyas.</span>
+                </div>
+                <div className="glass" style={{ borderRadius: 14, overflow: "auto" }}>
+                  <table className="cmp-table">
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: "left" }}>PARTICIPANTE</th>
+                        {dayMatches.map(m => <th key={m.id} title={`${m.home} vs ${m.away}`}>{FL[m.home] || "🏳️"}<br />{FL[m.away] || "🏳️"}</th>)}
+                        <th>VS TI</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[person, ...others].map(p => {
+                        let match = 0, both = 0;
+                        dayMatches.forEach(m => { const a = predOf(person, m), b = predOf(p, m); if (isFilledC(a) && isFilledC(b)) { both++; if (+a.h === +b.h && +a.a === +b.a) match++; } });
+                        const isMe = p === person;
+                        return (
+                          <tr key={p} className={isMe ? "cmp-me" : ""}>
+                            <td style={{ textAlign: "left" }}><span className="cmp-chip-av" style={{ width: 24, height: 24, fontSize: 13, marginRight: 6, verticalAlign: "middle" }}>{avatarFor(p)}</span>{displayName(p)}{isMe && <span className="lb-me-badge">TÚ</span>}</td>
+                            {dayMatches.map(m => {
+                              const pr = predOf(p, m), mine = predOf(person, m);
+                              const same = !isMe && isFilledC(pr) && isFilledC(mine) && +pr.h === +mine.h && +pr.a === +mine.a;
+                              return <td key={m.id} className={same ? "cmp-same" : ""}>{isFilledC(pr) ? `${pr.h}-${pr.a}` : "—"}</td>;
+                            })}
+                            <td>{isMe ? "—" : `${match}/${both}`}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          }
+
+          // Cara a cara
+          const opp = cmpWith;
+          let identical = 0, sameWin = 0, both = 0, myGoals = 0, opGoals = 0;
+          dayMatches.forEach(m => {
+            const a = predOf(person, m), b = predOf(opp, m);
+            if (isFilledC(a) && isFilledC(b)) { both++; myGoals += (+a.h) + (+a.a); opGoals += (+b.h) + (+b.a); if (+a.h === +b.h && +a.a === +b.a) identical++; if (outc(a) === outc(b)) sameWin++; }
+          });
+          const msgs = [];
+          if (both === 0) msgs.push({ ic: "🤷", t: "Ninguno de los dos predijo estos partidos." });
+          else {
+            if (identical === both) msgs.push({ ic: "🎯", t: "¡Almas gemelas! Predijeron exactamente lo mismo." });
+            else if (identical > 0) msgs.push({ ic: "👯", t: `Coinciden EXACTO en ${identical} de ${both} marcador${both !== 1 ? "es" : ""}.` });
+            else msgs.push({ ic: "🌀", t: "Ningún marcador idéntico — cada uno por su lado." });
+            if (sameWin === both && identical !== both) msgs.push({ ic: "🤝", t: "De acuerdo en quién gana, en desacuerdo en el cómo." });
+            else if (sameWin === 0) msgs.push({ ic: "😼", t: "Rivalidad total: no coinciden en ningún ganador." });
+            if (myGoals > opGoals) msgs.push({ ic: "🎲", t: `Eres más arriesgado/a: ves ${myGoals} goles vs ${opGoals}.` });
+            else if (myGoals < opGoals) msgs.push({ ic: "🛡️", t: `Vas a la segura: ${myGoals} goles vs ${opGoals}.` });
+            else msgs.push({ ic: "⚖️", t: `Mismo apetito de gol: ${myGoals} cada uno.` });
+          }
+
+          return (
+            <div>
+              {head}{daySel}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+                <button className="btn btn-ghost" onClick={() => setCmpWith(null)}>← Cambiar</button>
+                <div className="cmp-vs">
+                  <span><span className="cmp-chip-av">{avatarFor(person)}</span>{displayName(person)}</span>
+                  <span className="cmp-vs-x">VS</span>
+                  <span><span className="cmp-chip-av">{avatarFor(opp)}</span>{displayName(opp)}</span>
+                </div>
+              </div>
+              <div className="cmp-msgs">
+                {msgs.map((mm, i) => (<div key={i} className="cmp-msg"><span style={{ fontSize: 18 }}>{mm.ic}</span>{mm.t}</div>))}
+              </div>
+              <div className="glass" style={{ borderRadius: 14, overflow: "hidden", marginTop: 14 }}>
+                {dayMatches.map(m => {
+                  const a = predOf(person, m), b = predOf(opp, m);
+                  const af = isFilledC(a), bf = isFilledC(b);
+                  const ident = af && bf && +a.h === +b.h && +a.a === +b.a;
+                  const sw = af && bf && outc(a) === outc(b);
+                  const verdict = (!af || !bf) ? { t: "sin pronóstico", c: "var(--silver)" } : ident ? { t: "🎯 idéntico", c: "var(--gold-l)" } : sw ? { t: "≈ mismo ganador", c: "var(--emerald)" } : { t: "✗ distinto", c: "var(--rose)" };
+                  return (
+                    <div key={m.id} className="cmp-row">
+                      <div className="cmp-team"><span className="mf">{FL[m.home] || "🏳️"}</span><span className="mn">{m.home}</span></div>
+                      <div className="cmp-scores"><span>{af ? `${a.h}-${a.a}` : "—"}</span><span className="cmp-p-sep">·</span><span>{bf ? `${b.h}-${b.a}` : "—"}</span></div>
+                      <div className="cmp-team away"><span className="mf">{FL[m.away] || "🏳️"}</span><span className="mn">{m.away}</span></div>
+                      <div className="cmp-verdict" style={{ color: verdict.c }}>{verdict.t}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              <button className="btn btn-primary" style={{ marginTop: 14, width: "100%", padding: "11px 0" }} onClick={() => setCmpWith("__ALL__")}>📊 Ver tabla completa de todos</button>
             </div>
           );
         })()}
