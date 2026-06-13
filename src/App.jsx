@@ -29,6 +29,11 @@ const AVATAR_ICONS = [
 /* La más reciente arriba. Al cambiar la primera versión, el pop-up de novedades
    vuelve a aparecer una vez para todos. Se muestran las 2 últimas. */
 const CHANGELOG = [
+  { v: "1.6", date: "13 jun", items: [
+    "🎯 ¡Nuevo sistema de puntos! Ganador +2, goles de cada equipo +1, diferencia +1 → marcador exacto = 5. Revisa el detalle con 'ℹ️ Cómo se puntúa' en Clasificación.",
+    "✍️ Cargar resultados: cualquier participante puede subir el marcador final de los partidos desde la pestaña Hoy (queda registrado quién lo cargó).",
+    "🏆 Premios actualizados a la nueva escala de puntos.",
+  ]},
   { v: "1.5", date: "11 jun", items: [
     "🆚 Nueva pestaña 'Comparar': enfréntate a otro participante (o a todos) en los pronósticos del día, con mensajes según el riesgo/coincidencias y tabla de quién predijo lo mismo.",
     "🏅 Los logros de 'Tu resumen' muestran su descripción al pasar el mouse o tocar.",
@@ -59,18 +64,27 @@ const CHANGELOG = [
 const todayStr = () => new Date().toISOString().split("T")[0];
 const isLocked  = (date) => date && date <= todayStr();
 
+/* Puntaje aditivo (máx 5 = marcador exacto):
+   ganador/empate +2 · goles local +1 · goles visita +1 · diferencia de goles +1 */
+const MAX_PTS = 5;
 const getPts = (pred,res) => {
   if(!res||res.h==null||res.a==null) return null;
   if(!pred||pred.h===""||pred.a==="") return null;
   const [ph,pa,rh,ra]=[+pred.h,+pred.a,+res.h,+res.a];
   if(isNaN(ph)||isNaN(pa)) return null;
-  if(ph===rh&&pa===ra) return 3;
-  const pw=ph>pa?1:ph<pa?-1:0, rw=rh>ra?1:rh<ra?-1:0;
-  return pw===rw?1:0;
+  let pts=0;
+  if(Math.sign(ph-pa)===Math.sign(rh-ra)) pts+=2;  // ganador/empate
+  if(ph===rh) pts+=1;                               // goles del local
+  if(pa===ra) pts+=1;                               // goles del visitante
+  if((ph-pa)===(rh-ra)) pts+=1;                     // diferencia de goles
+  return pts;
 };
+const isExact  = (pred,res) => getPts(pred,res)===MAX_PTS;
+const gotWinner = (pred,res) => { const p=getPts(pred,res); return p!=null && p>=2; };
 
 const totalPts=(name,preds,results)=>Object.values(MATCHES).flat().reduce((s,m)=>s+(getPts(preds[name]?.[m.id],results[m.id])??0),0);
-const countExact=(name,preds,results)=>Object.values(MATCHES).flat().filter(m=>getPts(preds[name]?.[m.id],results[m.id])===3).length;
+const countExact=(name,preds,results)=>Object.values(MATCHES).flat().filter(m=>isExact(preds[name]?.[m.id],results[m.id])).length;
+const countWinners=(name,preds,results)=>Object.values(MATCHES).flat().filter(m=>gotWinner(preds[name]?.[m.id],results[m.id])).length;
 const countPlayed=(name,preds,results)=>Object.values(MATCHES).flat().filter(m=>getPts(preds[name]?.[m.id],results[m.id])!=null).length;
 
 const getStandings=(g,results)=>{
@@ -139,12 +153,12 @@ const GKS = [
 ];
 
 const EXTRA_CATS = [
-  {id:"campeon",   label:"Campeón",       icon:"🏆", pts:25, type:"country"},
-  {id:"subcampeon",label:"Subcampeón",    icon:"🥈", pts:15, type:"country"},
-  {id:"tercero",   label:"Tercer Puesto", icon:"🥉", pts:10, type:"country"},
-  {id:"goleador",  label:"Goleador",      icon:"👟", pts:20, type:"player"},
-  {id:"mvp",       label:"MVP",           icon:"⚽", pts:10, type:"player"},
-  {id:"guante",    label:"Guante de Oro", icon:"🧤", pts:10, type:"gk"},
+  {id:"campeon",   label:"Campeón",       icon:"🏆", pts:40, type:"country"},
+  {id:"subcampeon",label:"Subcampeón",    icon:"🥈", pts:25, type:"country"},
+  {id:"tercero",   label:"Tercer Puesto", icon:"🥉", pts:15, type:"country"},
+  {id:"goleador",  label:"Goleador",      icon:"👟", pts:35, type:"player"},
+  {id:"mvp",       label:"MVP",           icon:"⚽", pts:15, type:"player"},
+  {id:"guante",    label:"Guante de Oro", icon:"🧤", pts:15, type:"gk"},
 ];
 
 // Mapa nombre de jugador -> país, para mostrar su bandera
@@ -728,7 +742,12 @@ const CSS = `
   .bk-zoom-btn { padding:5px 12px !important; font-size:17px !important; line-height:1; font-weight:700; }
 
   /* ═══ AGENDA / PARTIDOS DE HOY ═══ */
-  .mini-row { display:grid; grid-template-columns:52px 1fr 54px 1fr auto; gap:8px; align-items:center; padding:9px 14px; border-bottom:1px solid rgba(148,163,184,0.07); }
+  .mini-row { display:grid; grid-template-columns:50px 1fr 76px 1fr auto; gap:8px; align-items:center; padding:10px 14px; border-bottom:1px solid rgba(148,163,184,0.07); }
+  .mini-zlabel { font-size:8px; letter-spacing:0.6px; color:var(--silver); font-weight:700; line-height:1.2; margin-bottom:1px; }
+  .mini-predbox { text-align:right; }
+  .mini-predval { font-family:'Oswald',sans-serif; font-size:14px; font-weight:700; color:var(--silver-l); white-space:nowrap; display:flex; align-items:center; gap:4px; justify-content:flex-end; }
+  .res-mini-btn.load { background:rgba(245,158,11,0.12); border-color:rgba(245,158,11,0.4); color:var(--gold-l); font-weight:600; white-space:nowrap; }
+  .res-mini-btn.load:hover { background:rgba(245,158,11,0.22); border-color:var(--gold); }
   .mini-row:last-child { border-bottom:none; }
   .mini-row.today { background:rgba(245,158,11,0.06); }
   .mini-act { text-align:right; min-width:96px; }
@@ -750,6 +769,9 @@ const CSS = `
   .mini-team.away { flex-direction:row-reverse; text-align:right; }
   .mini-mid { text-align:center; font-family:'Oswald',sans-serif; }
   .mini-score { font-size:17px; font-weight:700; color:var(--gold-l); letter-spacing:1px; }
+  .res-mini-btn { margin-top:3px; background:rgba(148,163,184,0.1); border:1px solid var(--glass-b); border-radius:7px; padding:2px 7px; font-size:11px; cursor:pointer; line-height:1.4; transition:all 0.15s; }
+  .res-mini-btn:hover { border-color:var(--blue-l); background:rgba(37,99,235,0.16); }
+  .res-by { font-size:9px; color:var(--silver); max-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin:2px auto 0; }
   .mini-vs { font-size:11px; color:var(--silver); }
   .mini-pred { font-size:10.5px; color:var(--silver); margin-top:1px; }
   .insight-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
@@ -884,6 +906,8 @@ const CSS = `
     .mini-row > *:nth-child(3){ grid-area:m; }
     .mini-row > *:nth-child(4){ grid-area:a; }
     .mini-act { grid-area:x; text-align:center !important; min-width:0 !important; }
+    .mini-predbox { text-align:center !important; }
+    .mini-predval { justify-content:center !important; }
     .mini-team .mn { font-size:12.5px !important; }
 
     /* Comparar — veredicto en segunda línea */
@@ -1038,7 +1062,7 @@ function CountUp({ value, dur = 700 }) {
 
 /* ═══════════════════════ APP ═══════════════════════ */
 const DOC_REF = doc(db, "polla2026", "data");
-const EMPTY   = { participants: [], predictions: {}, results: {}, passwords: {}, extras: {}, extrasResults: {}, brackets: {}, icons: {} };
+const EMPTY   = { participants: [], predictions: {}, results: {}, resultsBy: {}, passwords: {}, extras: {}, extrasResults: {}, brackets: {}, icons: {} };
 
 export default function App() {
   const [data,   setData]   = useState(EMPTY);
@@ -1082,6 +1106,8 @@ export default function App() {
   const [updateReady, setUpdateReady] = useState(false);
   const newVerRef = useRef(false);
   const [showNotes, setShowNotes] = useState(false);
+  const [showScoring, setShowScoring] = useState(false);
+  const [resEdit, setResEdit] = useState(null); // { id, h, a } cargando resultado
 
   /* Pop-up de novedades: aparece una vez cuando hay una versión nueva */
   useEffect(() => {
@@ -1286,6 +1312,18 @@ export default function App() {
     persist(s => ({ ...s, results: { ...s.results, [matchId]: { ...(s.results[matchId] || { h: null, a: null }), [side]: val === "" ? null : Math.max(0, Math.min(30, +val || 0)) } } }));
   };
 
+  /* Carga democratizada de resultados (cualquier participante, con registro de quién) */
+  const saveResult = (matchId, h, a) => {
+    if (!person) return;
+    const cl = (v) => Math.max(0, Math.min(30, Math.round(+v || 0)));
+    persist(s => ({
+      ...s,
+      results: { ...s.results, [matchId]: { h: cl(h), a: cl(a) } },
+      resultsBy: { ...(s.resultsBy || {}), [matchId]: { by: person, at: new Date().toISOString() } },
+    }));
+    setResEdit(null);
+  };
+
   const setExtra = (catId, val) => {
     if (!person) return;
     persist(s => ({ ...s, extras: { ...(s.extras || {}), [person]: { ...((s.extras || {})[person] || {}), [catId]: val } } }));
@@ -1380,6 +1418,63 @@ export default function App() {
       )}
 
       {/* ══ POP-UP NOTAS DE VERSIÓN ══ */}
+      {showScoring && (
+        <div className="modal" onClick={e => e.target === e.currentTarget && setShowScoring(false)}>
+          <div className="glass notes-pop">
+            <button onClick={() => setShowScoring(false)} title="Cerrar" className="notes-x">✕</button>
+            <div className="notes-head">
+              <div className="notes-title">🎯 CÓMO SE PUNTÚA</div>
+              <div className="notes-intro">Cada partido suma estos componentes:</div>
+            </div>
+            <div className="notes-body">
+              <ul className="notes-list">
+                {[
+                  { ic: "✅", t: "Acertar el ganador (o empate)", p: "+2" },
+                  { ic: "⚽", t: "Goles exactos del equipo local", p: "+1" },
+                  { ic: "⚽", t: "Goles exactos del equipo visitante", p: "+1" },
+                  { ic: "📏", t: "Diferencia de goles correcta", p: "+1" },
+                ].map((x, i) => (
+                  <li key={i} className="notes-item" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 16 }}>{x.ic}</span>
+                    <span style={{ flex: 1 }}>{x.t}</span>
+                    <span style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, color: "var(--gold-l)" }}>{x.p}</span>
+                  </li>
+                ))}
+              </ul>
+              <div style={{ marginTop: 14, padding: "12px 14px", borderRadius: 12, background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", fontSize: 12.5, color: "var(--silver-l)", lineHeight: 1.6 }}>
+                <b style={{ color: "var(--gold-l)" }}>🎯 Marcador exacto = 5 pts</b> (máximo).<br />
+                Ganador + un equipo bien = 3 · Solo ganador = 2 · Solo goles de un equipo = 1 · Todo mal = 0.
+              </div>
+              <div style={{ marginTop: 12, fontSize: 11.5, color: "var(--silver)" }}>
+                <b>Premios:</b> Campeón 40 · Subcampeón 25 · 3er puesto 15 · Goleador 35 · MVP 15 · Guante de Oro 15.
+              </div>
+            </div>
+            <button className="btn btn-primary notes-ok" onClick={() => setShowScoring(false)}>¡Entendido!</button>
+          </div>
+        </div>
+      )}
+
+      {resEdit && (
+        <div className="modal" onClick={e => e.target === e.currentTarget && setResEdit(null)}>
+          <div className="glass" style={{ borderRadius: 16, padding: 24, width: 360, maxWidth: "92vw" }}>
+            <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 19, fontWeight: 600, letterSpacing: 1 }}>📝 CARGAR RESULTADO</div>
+            <div style={{ fontSize: 12.5, color: "var(--silver)", marginBottom: 18 }}>Marcador final del partido. Lo verán todos y suma puntos al instante.</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 18 }}>
+              <div style={{ textAlign: "center", width: 70 }}><div style={{ fontSize: 30 }}>{FL[resEdit.home] || "🏳️"}</div><div style={{ fontSize: 11.5, color: "var(--silver)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{resEdit.home}</div></div>
+              <input type="number" min="0" max="30" className="score-inp" style={{ width: 50 }} value={resEdit.h} autoFocus onChange={e => setResEdit(re => ({ ...re, h: e.target.value }))} />
+              <span style={{ fontSize: 20, color: "var(--silver)" }}>-</span>
+              <input type="number" min="0" max="30" className="score-inp" style={{ width: 50 }} value={resEdit.a} onChange={e => setResEdit(re => ({ ...re, a: e.target.value }))} />
+              <div style={{ textAlign: "center", width: 70 }}><div style={{ fontSize: 30 }}>{FL[resEdit.away] || "🏳️"}</div><div style={{ fontSize: 11.5, color: "var(--silver)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{resEdit.away}</div></div>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn btn-primary" style={{ flex: 1, padding: "11px 0" }} disabled={resEdit.h === "" || resEdit.a === ""} onClick={() => saveResult(resEdit.id, resEdit.h, resEdit.a)}>Guardar</button>
+              <button className="btn btn-ghost" onClick={() => setResEdit(null)}>Cancelar</button>
+            </div>
+            <div style={{ fontSize: 11, color: "var(--silver)", textAlign: "center", marginTop: 12 }}>Se registrará como cargado por <b style={{ color: "var(--gold-l)" }}>{person ? displayName(person) : "—"}</b>.</div>
+          </div>
+        </div>
+      )}
+
       {showNotes && (
         <div className="modal" onClick={e => e.target === e.currentTarget && dismissNotes()}>
           <div className="glass notes-pop">
@@ -1754,7 +1849,7 @@ export default function App() {
                 const res = data.results[m.id];
                 const p = getPts(pred, res);
                 const hasRes = res?.h != null && res?.a != null;
-                const rowCls = `match-row row-anim${locked ? " locked" : ""}${p === 3 ? " pts3-row" : p === 1 ? " pts1-row" : p === 0 ? " pts0-row" : ""}`;
+                const rowCls = `match-row row-anim${locked ? " locked" : ""}${p === 5 ? " pts3-row" : p >= 1 ? " pts1-row" : p === 0 ? " pts0-row" : ""}`;
 
                 return (
                   <div key={m.id} className={rowCls} style={{ animationDelay: `${i * 45}ms` }}>
@@ -1776,12 +1871,12 @@ export default function App() {
                       ) : (<>
                         <input type="number" min="0" max="30" className="score-inp" value={pred.h}
                           onChange={e => setPred(m.id, "h", e.target.value)} disabled={!person || locked}
-                          style={{ borderColor: p === 3 ? "var(--gold)" : p === 1 ? "var(--emerald)" : p === 0 ? "var(--rose)" : "rgba(148,163,184,0.2)" }}
+                          style={{ borderColor: p === 5 ? "var(--gold)" : p >= 1 ? "var(--emerald)" : p === 0 ? "var(--rose)" : "rgba(148,163,184,0.2)" }}
                         />
                         <span style={{ color: "var(--silver)", fontFamily: "'Oswald',sans-serif", fontSize: 16 }}>—</span>
                         <input type="number" min="0" max="30" className="score-inp" value={pred.a}
                           onChange={e => setPred(m.id, "a", e.target.value)} disabled={!person || locked}
-                          style={{ borderColor: p === 3 ? "var(--gold)" : p === 1 ? "var(--emerald)" : p === 0 ? "var(--rose)" : "rgba(148,163,184,0.2)" }}
+                          style={{ borderColor: p === 5 ? "var(--gold)" : p >= 1 ? "var(--emerald)" : p === 0 ? "var(--rose)" : "rgba(148,163,184,0.2)" }}
                         />
                       </>)}
                     </div>
@@ -1812,11 +1907,11 @@ export default function App() {
                         <span key={`${m.id}-${p}`} className="badge-pop" style={{
                           padding: "4px 10px", borderRadius: 20, fontSize: 12, fontWeight: 700,
                           fontFamily: "'Oswald',sans-serif", letterSpacing: 0.5,
-                          background: p === 3 ? "rgba(245,158,11,0.2)" : p === 1 ? "rgba(16,185,129,0.2)" : "rgba(244,63,94,0.18)",
-                          border: `1px solid ${p === 3 ? "var(--gold)" : p === 1 ? "var(--emerald)" : "var(--rose)"}`,
-                          color: p === 3 ? "var(--gold-l)" : p === 1 ? "var(--emerald)" : "var(--rose)",
+                          background: p === 5 ? "rgba(245,158,11,0.2)" : p >= 1 ? "rgba(16,185,129,0.2)" : "rgba(244,63,94,0.18)",
+                          border: `1px solid ${p === 5 ? "var(--gold)" : p >= 1 ? "var(--emerald)" : "var(--rose)"}`,
+                          color: p === 5 ? "var(--gold-l)" : p >= 1 ? "var(--emerald)" : "var(--rose)",
                         }}>
-                          {p === 3 ? "+3" : p === 1 ? "+1" : "0"}
+                          {p > 0 ? `+${p}` : "0"}
                         </span>
                       )}
                     </div>
@@ -1832,7 +1927,7 @@ export default function App() {
                   </span>
                   <span style={{ fontSize: 12, color: "var(--silver)" }}>·</span>
                   <span style={{ fontSize: 12, color: "var(--emerald)", fontWeight: 500 }}>
-                    {MATCHES[grp].filter(m => getPts(data.predictions[person]?.[m.id], data.results[m.id]) === 3).length} exacto{MATCHES[grp].filter(m => getPts(data.predictions[person]?.[m.id], data.results[m.id]) === 3).length !== 1 ? "s" : ""}
+                    {MATCHES[grp].filter(m => getPts(data.predictions[person]?.[m.id], data.results[m.id]) === 5).length} exacto{MATCHES[grp].filter(m => getPts(data.predictions[person]?.[m.id], data.results[m.id]) === 5).length !== 1 ? "s" : ""}
                   </span>
                 </div>
               )}
@@ -1858,26 +1953,41 @@ export default function App() {
             const pred = data.predictions[person]?.[m.id];
             const hasPred = showPred && pred && pred.h !== "" && pred.h != null && pred.a !== "" && pred.a != null;
             const p = res && hasPred ? getPts(pred, r) : null;
-            const predColor = p === 3 ? "var(--gold-l)" : p === 1 ? "var(--emerald)" : p === 0 ? "var(--rose)" : "var(--silver-l)";
+            const predColor = p === 5 ? "var(--gold-l)" : p >= 1 ? "var(--emerald)" : p === 0 ? "var(--rose)" : "var(--silver-l)";
             const goPredict = () => { setTab("predicciones"); switchGrp(m.id[0]); window.scrollTo(0, 0); };
+            const started = isLocked(m.date);
+            const by = data.resultsBy?.[m.id]?.by;
             return (
               <div key={m.id} className={`mini-row${m.date === today ? " today" : ""}`}>
                 <div style={{ fontSize: 11, color: m.date === today ? "var(--gold)" : "var(--silver)", fontWeight: 500 }}>
                   {fmtDate(m.date)}{m.date === today && <div style={{ fontSize: 8.5, letterSpacing: 0.5, fontWeight: 700 }}>HOY</div>}
                 </div>
                 <div className="mini-team"><span className="mf">{FL[m.home] || "🏳️"}</span><span className="mn">{m.home}</span></div>
-                <div className="mini-mid">{res ? <div className="mini-score">{r.h}–{r.a}</div> : <div className="mini-vs">vs</div>}</div>
+                <div className="mini-mid">
+                  {started ? (
+                    res ? (<>
+                      <div className="mini-zlabel">RESULTADO</div>
+                      <div className="mini-score">{r.h}–{r.a}</div>
+                      {person && <button className="res-mini-btn" title="Editar el resultado OFICIAL del partido" onClick={() => setResEdit({ id: m.id, home: m.home, away: m.away, h: r.h, a: r.a })}>✏️</button>}
+                      {by && <div className="res-by" title={`Resultado cargado por ${displayName(by)}`}>por {displayName(by)}</div>}
+                    </>) : (
+                      person
+                        ? <button className="res-mini-btn load" title="Cargar el resultado OFICIAL del partido (lo verán todos)" onClick={() => setResEdit({ id: m.id, home: m.home, away: m.away, h: "", a: "" })}>📝 Resultado</button>
+                        : <div className="mini-vs">por jugar</div>
+                    )
+                  ) : <div className="mini-vs">vs</div>}
+                </div>
                 <div className="mini-team away"><span className="mf">{FL[m.away] || "🏳️"}</span><span className="mn">{m.away}</span></div>
                 <div className="mini-act">
-                  {res ? (
-                    hasPred
-                      ? <span className="mini-pred" style={{ color: predColor }}>Tú: {pred.h}-{pred.a}{p != null ? ` (+${p})` : ""}</span>
-                      : <span className="mini-pred" style={{ color: "var(--silver)" }}>{showPred ? "no predijiste" : ""}</span>
-                  ) : (
-                    hasPred
-                      ? <button className="mini-go icon" onClick={goPredict} title={`Tú: ${pred.h}-${pred.a} · toca para editar`}>{pred.h}-{pred.a} ✏️</button>
-                      : <button className="mini-go warn icon" onClick={goPredict} title="Falta predecir este partido · toca para predecir">⚠️</button>
-                  )}
+                  {!started ? (
+                    (showPred && hasPred)
+                      ? <div className="mini-predbox"><div className="mini-zlabel">TU PRONÓSTICO</div><div className="mini-predval">{pred.h}-{pred.a} <button className="res-mini-btn" onClick={goPredict} title="Editar tu pronóstico">✏️</button></div></div>
+                      : <button className="mini-go warn icon" onClick={goPredict} title="Te falta predecir este partido · toca para ir a predecir">⚠️</button>
+                  ) : (showPred && hasPred) ? (
+                    <div className="mini-predbox"><div className="mini-zlabel">TU PRONÓSTICO</div><div className="mini-predval" style={{ color: res ? predColor : "var(--silver-l)" }}>{pred.h}-{pred.a}{p != null ? ` · +${p}` : ""}</div></div>
+                  ) : showPred ? (
+                    <div className="mini-predbox"><div className="mini-zlabel">TU PRONÓSTICO</div><div className="mini-predval" style={{ color: "var(--silver)" }}>sin pronóstico</div></div>
+                  ) : null}
                 </div>
               </div>
             );
@@ -1934,11 +2044,11 @@ export default function App() {
           let streakP = null, streakBest = 0;
           humans.forEach(p => {
             let cur = 0, best = 0;
-            playedSorted.forEach(m => { const pts = getPts(data.predictions[p]?.[m.id], data.results[m.id]); if (pts != null) { if (pts >= 1) { cur++; if (cur > best) best = cur; } else cur = 0; } });
+            playedSorted.forEach(m => { const pts = getPts(data.predictions[p]?.[m.id], data.results[m.id]); if (pts != null) { if (pts >= 2) { cur++; if (cur > best) best = cur; } else cur = 0; } });
             if (best > streakBest) { streakBest = best; streakP = p; }
           });
           let accM = null, accN = 0;
-          playedSorted.forEach(m => { let c = 0; humans.forEach(p => { const pts = getPts(data.predictions[p]?.[m.id], data.results[m.id]); if (pts != null && pts >= 1) c++; }); if (c > accN) { accN = c; accM = m; } });
+          playedSorted.forEach(m => { let c = 0; humans.forEach(p => { const pts = getPts(data.predictions[p]?.[m.id], data.results[m.id]); if (pts != null && pts >= 2) c++; }); if (c > accN) { accN = c; accM = m; } });
 
           const insights = [];
           if (nextM) insights.push({ ic: "🔜", lbl: "PRÓXIMO PARTIDO", val: `${FL[nextM.home] || "🏳️"} ${nextM.home} vs ${nextM.away} ${FL[nextM.away] || "🏳️"}`, sub: nextLean ? `La gente predice: ${nextLean.flag} ${nextLean.label} · ${nextLean.pct}%` : "aún sin pronósticos", onClick: () => { setTab("predicciones"); switchGrp(nextM.id[0]); window.scrollTo(0, 0); } });
@@ -2280,7 +2390,7 @@ export default function App() {
               const rank = sorted.indexOf(me) + 1;
               const pts = grandTotal(me, data);
               const exact = countExact(me, data.predictions, data.results);
-              const winners = Object.values(MATCHES).flat().filter(m => getPts(data.predictions[me]?.[m.id], data.results[m.id]) === 1).length;
+              const winners = countWinners(me, data.predictions, data.results);
               const filled = Object.values(MATCHES).flat().filter(m => { const p = data.predictions[me]?.[m.id]; return p?.h !== "" && p?.h != null && p?.a !== "" && p?.a != null; }).length;
               let bestG = null, bestGP = -1;
               GK.forEach(g => { const gp = MATCHES[g].reduce((s, m) => s + (getPts(data.predictions[me]?.[m.id], data.results[m.id]) ?? 0), 0); if (gp > bestGP) { bestGP = gp; bestG = g; } });
@@ -2293,7 +2403,7 @@ export default function App() {
               ];
               const playedSt = Object.values(MATCHES).flat().filter(m => { const r = data.results[m.id]; return r && r.h != null && r.a != null; }).sort((a, b) => (a.date || "9") < (b.date || "9") ? -1 : 1);
               let curStreak = 0;
-              playedSt.forEach(m => { const pt = getPts(data.predictions[me]?.[m.id], data.results[m.id]); if (pt != null) { if (pt >= 1) curStreak++; else curStreak = 0; } });
+              playedSt.forEach(m => { const pt = getPts(data.predictions[me]?.[m.id], data.results[m.id]); if (pt != null) { if (pt >= 2) curStreak++; else curStreak = 0; } });
               const extrasDone = EXTRA_CATS.every(c => (data.extras?.[me] || {})[c.id]);
               const isLeader = sorted[0] === me && leaderPts > 0;
               const badges = [
@@ -2370,8 +2480,8 @@ export default function App() {
               <div className="lb-card" style={{ background: "rgba(37,99,235,0.1)", borderBottom: "1px solid rgba(148,163,184,0.1)", fontSize: 10, color: "var(--silver)", letterSpacing: 1.5, fontWeight: 600 }}>
                 <div>#</div><div>PARTICIPANTE</div>
                 <div style={{ textAlign: "center" }}>JUGADOS</div>
-                <div style={{ textAlign: "center", color: "var(--gold)" }}>+3 pts</div>
-                <div style={{ textAlign: "center", color: "var(--emerald)" }}>+1 pt</div>
+                <div style={{ textAlign: "center", color: "var(--gold)" }}>EXACTOS</div>
+                <div style={{ textAlign: "center", color: "var(--emerald)" }}>GANADOR</div>
                 <div style={{ textAlign: "center", fontSize: 11 }}>TOTAL</div>
               </div>
               {!sorted.length && <div style={{ padding: "36px", textAlign: "center", color: "var(--silver)", fontSize: 14 }}>No hay participantes aún — ve a la pestaña 👥</div>}
@@ -2379,7 +2489,7 @@ export default function App() {
                 const pts = grandTotal(name, data);
                 const exact = countExact(name, data.predictions, data.results);
                 const played = countPlayed(name, data.predictions, data.results);
-                const winners = Object.values(MATCHES).flat().filter(m => getPts(data.predictions[name]?.[m.id], data.results[m.id]) === 1).length;
+                const winners = countWinners(name, data.predictions, data.results);
                 const medal = ["🥇", "🥈", "🥉"][i] || (i + 1);
                 const isTop = i === 0;
                 const isMe = !!person && person === name;
@@ -2404,12 +2514,9 @@ export default function App() {
                 );
               })}
             </div>
-            <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              {[{ c: "var(--gold)", l: "Marcador exacto = 3 pts" }, { c: "var(--emerald)", l: "Ganador correcto = 1 pt" }, { c: "var(--rose)", l: "Fallo total = 0 pts" }].map(x => (
-                <div key={x.l} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", background: `${x.c}14`, border: `1px solid ${x.c}55`, borderRadius: 20, fontSize: 12, color: "var(--silver-l)", fontWeight: 500 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: 4, background: x.c, display: "inline-block" }} />{x.l}
-                </div>
-              ))}
+            <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <button className="btn btn-ghost" onClick={() => setShowScoring(true)}>ℹ️ Cómo se puntúa</button>
+              <span style={{ fontSize: 12, color: "var(--silver)" }}>Exacto 5 · Ganador 2 · Goles de un equipo +1 · Diferencia +1</span>
             </div>
           </div>
           );
