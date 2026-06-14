@@ -61,7 +61,8 @@ const CHANGELOG = [
 ];
 
 /* ═══════════════════════ UTILS ═══════════════════════ */
-const todayStr = () => new Date().toISOString().split("T")[0];
+/* Fecha de HOY en horario de Chile (YYYY-MM-DD) — igual que el script agenda.mjs */
+const todayStr = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago" }).format(new Date());
 const isLocked  = (date) => date && date <= todayStr();
 
 /* Puntaje aditivo (máx 5 = marcador exacto):
