@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { db } from "./firebase";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, updateDoc, FieldPath } from "firebase/firestore";
 import { GD, FL, MATCHES, GK } from "./tournament";
 
 const ADMIN_PWD = "mundial2026";
@@ -1065,6 +1065,14 @@ function CountUp({ value, dur = 700 }) {
 const DOC_REF = doc(db, "polla2026", "data");
 const EMPTY   = { participants: [], predictions: {}, results: {}, resultsBy: {}, passwords: {}, extras: {}, extrasResults: {}, brackets: {}, icons: {} };
 
+/* set inmutable de un valor anidado: setIn(obj, ["predictions","Cata","I03","h"], 3) */
+const setIn = (obj, path, val) => {
+  if (path.length === 0) return val;
+  const [k, ...rest] = path;
+  const base = (obj && typeof obj === "object" && !Array.isArray(obj)) ? obj : {};
+  return { ...base, [k]: setIn(base[k], rest, val) };
+};
+
 export default function App() {
   const [data,   setData]   = useState(EMPTY);
   const [loaded, setLoaded] = useState(false);
@@ -1109,6 +1117,7 @@ export default function App() {
   const [showNotes, setShowNotes] = useState(false);
   const [showScoring, setShowScoring] = useState(false);
   const [resEdit, setResEdit] = useState(null); // { id, h, a } cargando resultado
+  const [saveErr, setSaveErr] = useState(false); // falló un guardado (conexión)
 
   /* Pop-up de novedades: aparece una vez cuando hay una versión nueva */
   useEffect(() => {
@@ -1185,12 +1194,24 @@ export default function App() {
     return unsub;
   }, []);
 
+  /* Guardado completo (solo acciones admin/estructurales: participantes, perfil, etc.) */
   const persist = (updater) => {
     setData(prev => {
       const next = updater(prev);
-      setDoc(DOC_REF, next).catch(() => {});
+      setDoc(DOC_REF, next).catch(() => setSaveErr(true));
       return next;
     });
+  };
+
+  /* Guardado GRANULAR: escribe solo el campo que cambió (no pisa lo de otros).
+     Usa FieldPath para soportar claves con puntos/emojis ("P.Bajos", "🧠 Analista"). */
+  const writeField = (path, val) => {
+    setData(prev => setIn(prev, path, val));
+    updateDoc(DOC_REF, new FieldPath(...path), val).catch(() => setSaveErr(true));
+  };
+  const writeFields = (pairs) => { // [[path, val], ...]
+    setData(prev => pairs.reduce((acc, [p, v]) => setIn(acc, p, v), prev));
+    updateDoc(DOC_REF, ...pairs.flatMap(([p, v]) => [new FieldPath(...p), v])).catch(() => setSaveErr(true));
   };
 
   /* Handlers */
@@ -1306,42 +1327,41 @@ export default function App() {
 
   const setPred = (matchId, side, val) => {
     if (!person) return;
-    persist(s => ({ ...s, predictions: { ...s.predictions, [person]: { ...(s.predictions[person] || {}), [matchId]: { ...(s.predictions[person]?.[matchId] || { h: "", a: "" }), [side]: val } } } }));
+    writeField(["predictions", person, matchId, side], val);
   };
 
   const setResult = (matchId, side, val) => {
-    persist(s => ({ ...s, results: { ...s.results, [matchId]: { ...(s.results[matchId] || { h: null, a: null }), [side]: val === "" ? null : Math.max(0, Math.min(30, +val || 0)) } } }));
+    writeField(["results", matchId, side], val === "" ? null : Math.max(0, Math.min(30, +val || 0)));
   };
 
   /* Carga democratizada de resultados (cualquier participante, con registro de quién) */
   const saveResult = (matchId, h, a) => {
     if (!person) return;
     const cl = (v) => Math.max(0, Math.min(30, Math.round(+v || 0)));
-    persist(s => ({
-      ...s,
-      results: { ...s.results, [matchId]: { h: cl(h), a: cl(a) } },
-      resultsBy: { ...(s.resultsBy || {}), [matchId]: { by: person, at: new Date().toISOString() } },
-    }));
+    writeFields([
+      [["results", matchId], { h: cl(h), a: cl(a) }],
+      [["resultsBy", matchId], { by: person, at: new Date().toISOString() }],
+    ]);
     setResEdit(null);
   };
 
   const setExtra = (catId, val) => {
     if (!person) return;
-    persist(s => ({ ...s, extras: { ...(s.extras || {}), [person]: { ...((s.extras || {})[person] || {}), [catId]: val } } }));
+    writeField(["extras", person, catId], val);
   };
 
   const setExtraResult = (catId, val) => {
-    persist(s => ({ ...s, extrasResults: { ...(s.extrasResults || {}), [catId]: val } }));
+    writeField(["extrasResults", catId], val);
   };
 
   const setBracketPick = (slotId, team) => {
     if (!person) return;
-    persist(s => ({ ...s, brackets: { ...(s.brackets || {}), [person]: { ...((s.brackets || {})[person] || {}), [slotId]: team } } }));
+    writeField(["brackets", person, slotId], team);
   };
 
   const resetBracket = () => {
     if (!person) return;
-    persist(s => ({ ...s, brackets: { ...(s.brackets || {}), [person]: {} } }));
+    writeField(["brackets", person], {});
   };
 
   const switchGrp = (g) => { setGrp(g); setGrpKey(k => k + 1); };
@@ -1415,6 +1435,14 @@ export default function App() {
         <div className="update-banner">
           <span>🔄 Hay una nueva versión disponible</span>
           <button className="btn btn-primary" onClick={() => window.location.reload()}>Actualizar</button>
+        </div>
+      )}
+
+      {/* ══ AVISO DE ERROR AL GUARDAR ══ */}
+      {saveErr && (
+        <div className="update-banner" style={{ borderColor: "rgba(244,63,94,0.6)" }}>
+          <span>⚠️ No se pudo guardar — revisa tu conexión e inténtalo de nuevo.</span>
+          <button className="btn btn-ghost" onClick={() => setSaveErr(false)}>Cerrar</button>
         </div>
       )}
 
