@@ -29,6 +29,11 @@ const AVATAR_ICONS = [
 /* La más reciente arriba. Al cambiar la primera versión, el pop-up de novedades
    vuelve a aparecer una vez para todos. Se muestran las 2 últimas. */
 const CHANGELOG = [
+  { v: "1.7", date: "22 jun", items: [
+    "🔐 Tu perfil queda guardado: ya no hay que ingresar la contraseña cada vez que abres la app (usa 'Salir' para cambiar de perfil).",
+    "📊 'Datos curiosos' se movió a la pestaña Comparar.",
+    "🛠️ Más estable: los pronósticos ya no se pisan si varios cargan a la vez, y se respeta la hora de Chile para los bloqueos.",
+  ]},
   { v: "1.6", date: "13 jun", items: [
     "🎯 ¡Nuevo sistema de puntos! Ganador +2, goles de cada equipo +1, diferencia +1 → marcador exacto = 5. Revisa el detalle con 'ℹ️ Cómo se puntúa' en Clasificación.",
     "✍️ Cargar resultados: cualquier participante puede subir el marcador final de los partidos desde la pestaña Hoy (queda registrado quién lo cargó).",
@@ -1194,6 +1199,18 @@ export default function App() {
     return unsub;
   }, []);
 
+  /* Restaura la sesión guardada (perfil + auth) una sola vez al cargar */
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current || !data.participants?.length) return;
+    restoredRef.current = true;
+    let saved = null; try { saved = localStorage.getItem("pollaSession"); } catch {}
+    if (saved && data.participants.includes(saved)) {
+      setPerson(p => p || saved);
+      if (!isAI(saved)) setAuthed(prev => new Set(prev).add(saved));
+    }
+  }, [data.participants]);
+
   /* Guardado completo (solo acciones admin/estructurales: participantes, perfil, etc.) */
   const persist = (updater) => {
     setData(prev => {
@@ -1238,15 +1255,20 @@ export default function App() {
     if (person === name) setPerson(data.participants.find(x => x !== name) || "");
   };
 
+  const rememberSession = (name) => { try { name ? localStorage.setItem("pollaSession", name) : localStorage.removeItem("pollaSession"); } catch {} };
+
   const selectPerson = (name) => {
     if (isAI(name) || authed.has(name) || adminMode) {
       setPerson(name);
+      rememberSession(name);
     } else {
       setPartTarget(name);
       setPLVal(""); setPLErr(false);
       setPartLogin(true);
     }
   };
+
+  const logoutSession = () => { setPerson(""); rememberSession(""); };
 
   const requestDelete = (name) => {
     if (adminMode) { removePart(name); return; }
@@ -1270,7 +1292,7 @@ export default function App() {
       setAuthed(prev => new Set(prev).add(target));
       setPartLogin(false); setPLVal("");
       if (pendingEdit) { setPendingEdit(false); openEdit(target, true); }
-      else setPerson(target);
+      else { setPerson(target); rememberSession(target); }
     } else {
       setPLErr(true);
     }
@@ -1321,6 +1343,7 @@ export default function App() {
     if (oldName !== newName) {
       setAuthed(prev => { const nx = new Set(prev); if (nx.has(oldName)) { nx.delete(oldName); nx.add(newName); } return nx; });
       setPerson(p => (p === oldName ? newName : p));
+      try { if (localStorage.getItem("pollaSession") === oldName) localStorage.setItem("pollaSession", newName); } catch {}
     }
     setShowEdit(false); setEditErr("");
   };
@@ -1393,16 +1416,118 @@ export default function App() {
   const avatarFor = (name) => iconFor(name) || displayName(name)[0]?.toUpperCase() || "?";
 
   /* Chips de participantes (reutilizado en varias pestañas) */
-  const renderPartChips = () => data.participants.map(p => {
-    const ic = iconFor(p);
-    return (
-      <button key={p} className={`part-chip${person === p ? " active" : ""}`} onClick={() => selectPerson(p)}>
-        {ic && <span style={{ marginRight: 5 }}>{ic}</span>}{displayName(p)}
-        {!isAI(p) && !authed.has(p) && !adminMode && <span style={{ fontSize: 11, opacity: 0.6, marginLeft: 4 }}>🔒</span>}
-        {isAI(p) && <span style={{ fontSize: 10, opacity: 0.7, marginLeft: 4 }}>🤖</span>}
-      </button>
+  const renderPartChips = () => {
+    const chips = data.participants.map(p => {
+      const ic = iconFor(p);
+      return (
+        <button key={p} className={`part-chip${person === p ? " active" : ""}`} onClick={() => selectPerson(p)}>
+          {ic && <span style={{ marginRight: 5 }}>{ic}</span>}{displayName(p)}
+          {!isAI(p) && !authed.has(p) && !adminMode && <span style={{ fontSize: 11, opacity: 0.6, marginLeft: 4 }}>🔒</span>}
+          {isAI(p) && <span style={{ fontSize: 10, opacity: 0.7, marginLeft: 4 }}>🤖</span>}
+        </button>
+      );
+    });
+    if (person) chips.push(
+      <button key="__logout" className="part-chip" style={{ opacity: 0.8 }} onClick={logoutSession} title="Cambiar o cerrar perfil">↩︎ Salir</button>
     );
-  });
+    return chips;
+  };
+
+  /* Datos curiosos (autocontenido — se usa en la pestaña Comparar) */
+  const renderDatosCuriosos = () => {
+    const allM = Object.values(MATCHES).flat();
+    const today = todayStr();
+    const hasRes = (m) => { const r = data.results[m.id]; return r && r.h != null && r.a != null; };
+    const byDate = (a, b) => (a.date || "9999") < (b.date || "9999") ? -1 : 1;
+    const isFilled = (pr) => pr && pr.h !== "" && pr.h != null && pr.a !== "" && pr.a != null;
+    const humans = data.participants.filter(x => !isAI(x));
+    const tally = (catId) => {
+      const map = {};
+      humans.forEach(p => { const v = (data.extras || {})[p]?.[catId]; if (v) map[v] = (map[v] || 0) + 1; });
+      let best = null, n = 0;
+      Object.entries(map).forEach(([k, c]) => { if (c > n) { n = c; best = k; } });
+      return best ? { name: best, n } : null;
+    };
+    const champFav = tally("campeon"), scorerFav = tally("goleador");
+    const flagPlayer = (nm) => FL[PLAYER_COUNTRY[nm]] || "🏳️";
+    const nameTag = (p) => `${iconFor(p) ? iconFor(p) + " " : ""}${displayName(p)}`;
+
+    const avgList = humans.map(p => {
+      let sum = 0, n = 0;
+      allM.forEach(m => { const pr = data.predictions[p]?.[m.id]; if (isFilled(pr)) { sum += (+pr.h) + (+pr.a); n++; } });
+      return n >= 5 ? { p, avg: sum / n } : null;
+    }).filter(Boolean);
+    const riskiest = avgList.length ? avgList.reduce((a, b) => b.avg > a.avg ? b : a) : null;
+    const safest = avgList.length >= 2 ? avgList.reduce((a, b) => b.avg < a.avg ? b : a) : null;
+
+    const todayM = allM.filter(m => m.date === today).sort(byDate);
+    const upc = allM.filter(m => m.date && m.date > today && !hasRes(m)).sort(byDate);
+    const nextM = todayM[0] || upc[0] || null;
+    let nextLean = null;
+    if (nextM) {
+      let h = 0, d = 0, a = 0, tot = 0;
+      humans.forEach(p => { const pr = data.predictions[p]?.[nextM.id]; if (isFilled(pr)) { tot++; const diff = (+pr.h) - (+pr.a); if (diff > 0) h++; else if (diff < 0) a++; else d++; } });
+      if (tot > 0) {
+        const opts = [{ n: h, label: nextM.home, flag: FL[nextM.home] || "🏳️" }, { n: d, label: "empate", flag: "🤝" }, { n: a, label: nextM.away, flag: FL[nextM.away] || "🏳️" }];
+        const top = opts.reduce((x, y) => y.n > x.n ? y : x);
+        nextLean = { label: top.label, flag: top.flag, pct: Math.round(top.n / tot * 100) };
+      }
+    }
+
+    let coMatch = null, coScore = null, coN = 1;
+    allM.forEach(m => {
+      const cnt = {};
+      humans.forEach(p => { const pr = data.predictions[p]?.[m.id]; if (isFilled(pr)) { const k = `${+pr.h}-${+pr.a}`; cnt[k] = (cnt[k] || 0) + 1; } });
+      Object.entries(cnt).forEach(([k, c]) => { if (c > coN) { coN = c; coMatch = m; coScore = k; } });
+    });
+
+    const playedSorted = allM.filter(m => hasRes(m)).sort(byDate);
+    let topExact = null, topEN = 0;
+    humans.forEach(p => { const e = countExact(p, data.predictions, data.results); if (e > topEN) { topEN = e; topExact = p; } });
+    let streakP = null, streakBest = 0;
+    humans.forEach(p => {
+      let cur = 0, best = 0;
+      playedSorted.forEach(m => { const pts = getPts(data.predictions[p]?.[m.id], data.results[m.id]); if (pts != null) { if (pts >= 2) { cur++; if (cur > best) best = cur; } else cur = 0; } });
+      if (best > streakBest) { streakBest = best; streakP = p; }
+    });
+    let accM = null, accN = 0;
+    playedSorted.forEach(m => { let c = 0; humans.forEach(p => { const pts = getPts(data.predictions[p]?.[m.id], data.results[m.id]); if (pts != null && pts >= 2) c++; }); if (c > accN) { accN = c; accM = m; } });
+
+    const insights = [];
+    if (nextM) insights.push({ ic: "🔜", lbl: "PRÓXIMO PARTIDO", val: `${FL[nextM.home] || "🏳️"} ${nextM.home} vs ${nextM.away} ${FL[nextM.away] || "🏳️"}`, sub: nextLean ? `La gente predice: ${nextLean.flag} ${nextLean.label} · ${nextLean.pct}%` : "aún sin pronósticos", onClick: () => { setTab("predicciones"); switchGrp(nextM.id[0]); window.scrollTo(0, 0); } });
+    if (champFav) insights.push({ ic: "🏆", lbl: "CAMPEÓN FAVORITO", val: `${FL[champFav.name] || "🏳️"} ${champFav.name}`, sub: `${champFav.n} voto${champFav.n !== 1 ? "s" : ""}` });
+    if (scorerFav) insights.push({ ic: "👟", lbl: "GOLEADOR FAVORITO", val: `${flagPlayer(scorerFav.name)} ${scorerFav.name}`, sub: `${scorerFav.n} voto${scorerFav.n !== 1 ? "s" : ""}` });
+    if (riskiest) insights.push({ ic: "🎲", lbl: "EL MÁS ARRIESGADO", val: nameTag(riskiest.p), sub: `${riskiest.avg.toFixed(1)} goles/partido` });
+    if (safest && riskiest && safest.p !== riskiest.p) insights.push({ ic: "🛡️", lbl: "EL MÁS CAUTO", val: nameTag(safest.p), sub: `${safest.avg.toFixed(1)} goles/partido` });
+    if (coMatch) insights.push({ ic: "🤝", lbl: "MAYOR COINCIDENCIA", val: `${FL[coMatch.home] || "🏳️"} ${coScore} ${FL[coMatch.away] || "🏳️"}`, sub: `${coN} personas · ${coMatch.home}-${coMatch.away}` });
+    if (topEN > 0) insights.push({ ic: "🎯", lbl: "MÁS EXACTOS", val: nameTag(topExact), sub: `${topEN} marcador${topEN !== 1 ? "es" : ""} exacto${topEN !== 1 ? "s" : ""}` });
+    if (streakBest > 1) insights.push({ ic: "🔥", lbl: "MEJOR RACHA", val: nameTag(streakP), sub: `${streakBest} aciertos seguidos` });
+    if (accM) insights.push({ ic: "✅", lbl: "PARTIDO MÁS ACERTADO", val: `${FL[accM.home] || "🏳️"} ${accM.home}–${accM.away} ${FL[accM.away] || "🏳️"}`, sub: `${accN} le achuntaron` });
+
+    return (
+      <div style={{ marginTop: 24 }}>
+        <p style={{ fontSize: 11, letterSpacing: 2, color: "var(--silver)", fontWeight: 600, margin: "0 0 8px 2px" }}>📊 DATOS CURIOSOS</p>
+        {insights.length ? (
+          <div className="insight-grid">
+            {insights.map(it => (
+              <div key={it.lbl} className={`insight-card${it.onClick ? " lift insight-click" : ""}`} onClick={it.onClick}>
+                <span className="insight-ic">{it.ic}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div className="insight-lbl">{it.lbl}</div>
+                  <div className="insight-val" style={{ lineHeight: 1.25 }}>{it.val}</div>
+                  <div className="insight-sub">{it.sub}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="glass" style={{ borderRadius: 14, padding: 24, textAlign: "center", color: "var(--silver)", fontSize: 13 }}>
+            Aún no hay suficientes datos. Cuando los participantes elijan sus premios, aparecerán aquí los favoritos. 🔮
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderForm = (team, right) => {
     const f = (data.form || {})[team];
@@ -2022,76 +2147,8 @@ export default function App() {
             );
           };
 
-          // Datos curiosos
-          const humans = data.participants.filter(x => !isAI(x));
-          const tally = (catId) => {
-            const map = {};
-            humans.forEach(p => { const v = (data.extras || {})[p]?.[catId]; if (v) map[v] = (map[v] || 0) + 1; });
-            let best = null, n = 0;
-            Object.entries(map).forEach(([k, c]) => { if (c > n) { n = c; best = k; } });
-            return best ? { name: best, n } : null;
-          };
-          const champFav = tally("campeon"), scorerFav = tally("goleador");
-          const flagPlayer = (nm) => FL[PLAYER_COUNTRY[nm]] || "🏳️";
-          const nameTag = (p) => `${iconFor(p) ? iconFor(p) + " " : ""}${displayName(p)}`;
-          const isFilled = (pr) => pr && pr.h !== "" && pr.h != null && pr.a !== "" && pr.a != null;
-
-          // El más arriesgado / cauto (promedio de goles por predicción, mín. 5 predicciones)
-          const avgList = humans.map(p => {
-            let sum = 0, n = 0;
-            allM.forEach(m => { const pr = data.predictions[p]?.[m.id]; if (isFilled(pr)) { sum += (+pr.h) + (+pr.a); n++; } });
-            return n >= 5 ? { p, avg: sum / n } : null;
-          }).filter(Boolean);
-          const riskiest = avgList.length ? avgList.reduce((a, b) => b.avg > a.avg ? b : a) : null;
-          const safest = avgList.length >= 2 ? avgList.reduce((a, b) => b.avg < a.avg ? b : a) : null;
-
-          // Próximo partido + a quién favorece la gente (con %)
-          const nextM = todayMatches[0] || upcoming[0] || null;
-          let nextLean = null;
-          if (nextM) {
-            let h = 0, d = 0, a = 0, tot = 0;
-            humans.forEach(p => { const pr = data.predictions[p]?.[nextM.id]; if (isFilled(pr)) { tot++; const diff = (+pr.h) - (+pr.a); if (diff > 0) h++; else if (diff < 0) a++; else d++; } });
-            if (tot > 0) {
-              const opts = [{ n: h, label: nextM.home, flag: FL[nextM.home] || "🏳️" }, { n: d, label: "empate", flag: "🤝" }, { n: a, label: nextM.away, flag: FL[nextM.away] || "🏳️" }];
-              const top = opts.reduce((x, y) => y.n > x.n ? y : x);
-              nextLean = { label: top.label, flag: top.flag, pct: Math.round(top.n / tot * 100) };
-            }
-          }
-
-          // Mayor coincidencia: mismo marcador exacto en un partido (mín. 2 personas)
-          let coMatch = null, coScore = null, coN = 1;
-          allM.forEach(m => {
-            const cnt = {};
-            humans.forEach(p => { const pr = data.predictions[p]?.[m.id]; if (isFilled(pr)) { const k = `${+pr.h}-${+pr.a}`; cnt[k] = (cnt[k] || 0) + 1; } });
-            Object.entries(cnt).forEach(([k, c]) => { if (c > coN) { coN = c; coMatch = m; coScore = k; } });
-          });
-
-          // Durante el torneo (necesitan resultados)
-          const playedSorted = allM.filter(m => hasRes(m)).sort(byDate);
-          let topExact = null, topEN = 0;
-          humans.forEach(p => { const e = countExact(p, data.predictions, data.results); if (e > topEN) { topEN = e; topExact = p; } });
-          let streakP = null, streakBest = 0;
-          humans.forEach(p => {
-            let cur = 0, best = 0;
-            playedSorted.forEach(m => { const pts = getPts(data.predictions[p]?.[m.id], data.results[m.id]); if (pts != null) { if (pts >= 2) { cur++; if (cur > best) best = cur; } else cur = 0; } });
-            if (best > streakBest) { streakBest = best; streakP = p; }
-          });
-          let accM = null, accN = 0;
-          playedSorted.forEach(m => { let c = 0; humans.forEach(p => { const pts = getPts(data.predictions[p]?.[m.id], data.results[m.id]); if (pts != null && pts >= 2) c++; }); if (c > accN) { accN = c; accM = m; } });
-
-          const insights = [];
-          if (nextM) insights.push({ ic: "🔜", lbl: "PRÓXIMO PARTIDO", val: `${FL[nextM.home] || "🏳️"} ${nextM.home} vs ${nextM.away} ${FL[nextM.away] || "🏳️"}`, sub: nextLean ? `La gente predice: ${nextLean.flag} ${nextLean.label} · ${nextLean.pct}%` : "aún sin pronósticos", onClick: () => { setTab("predicciones"); switchGrp(nextM.id[0]); window.scrollTo(0, 0); } });
-          if (champFav) insights.push({ ic: "🏆", lbl: "CAMPEÓN FAVORITO", val: `${FL[champFav.name] || "🏳️"} ${champFav.name}`, sub: `${champFav.n} voto${champFav.n !== 1 ? "s" : ""}` });
-          if (scorerFav) insights.push({ ic: "👟", lbl: "GOLEADOR FAVORITO", val: `${flagPlayer(scorerFav.name)} ${scorerFav.name}`, sub: `${scorerFav.n} voto${scorerFav.n !== 1 ? "s" : ""}` });
-          if (riskiest) insights.push({ ic: "🎲", lbl: "EL MÁS ARRIESGADO", val: nameTag(riskiest.p), sub: `${riskiest.avg.toFixed(1)} goles/partido` });
-          if (safest && riskiest && safest.p !== riskiest.p) insights.push({ ic: "🛡️", lbl: "EL MÁS CAUTO", val: nameTag(safest.p), sub: `${safest.avg.toFixed(1)} goles/partido` });
-          if (coMatch) insights.push({ ic: "🤝", lbl: "MAYOR COINCIDENCIA", val: `${FL[coMatch.home] || "🏳️"} ${coScore} ${FL[coMatch.away] || "🏳️"}`, sub: `${coN} personas · ${coMatch.home}-${coMatch.away}` });
-          if (topEN > 0) insights.push({ ic: "🎯", lbl: "MÁS EXACTOS", val: nameTag(topExact), sub: `${topEN} marcador${topEN !== 1 ? "es" : ""} exacto${topEN !== 1 ? "s" : ""}` });
-          if (streakBest > 1) insights.push({ ic: "🔥", lbl: "MEJOR RACHA", val: nameTag(streakP), sub: `${streakBest} aciertos seguidos` });
-          if (accM) insights.push({ ic: "✅", lbl: "PARTIDO MÁS ACERTADO", val: `${FL[accM.home] || "🏳️"} ${accM.home}–${accM.away} ${FL[accM.away] || "🏳️"}`, sub: `${accN} le achuntaron` });
-
           const sectionTitle = (t) => <p style={{ fontSize: 11, letterSpacing: 2, color: "var(--silver)", fontWeight: 600, margin: "0 0 8px 2px" }}>{t}</p>;
-          const pendCount = showPred ? allM.filter(m => !isLocked(m.date) && !isFilled(data.predictions[person]?.[m.id])).length : 0;
+          const pendCount = showPred ? allM.filter(m => { if (isLocked(m.date)) return false; const pr = data.predictions[person]?.[m.id]; return !(pr && pr.h !== "" && pr.h != null && pr.a !== "" && pr.a != null); }).length : 0;
 
           return (
             <div>
@@ -2128,33 +2185,12 @@ export default function App() {
                 </div>
               )}
 
-              <div>
-                {sectionTitle("📊 DATOS CURIOSOS")}
-                {insights.length ? (
-                  <div className="insight-grid">
-                    {insights.map(it => (
-                      <div key={it.lbl} className={`insight-card${it.onClick ? " lift insight-click" : ""}`} onClick={it.onClick}>
-                        <span className="insight-ic">{it.ic}</span>
-                        <div style={{ minWidth: 0 }}>
-                          <div className="insight-lbl">{it.lbl}</div>
-                          <div className="insight-val" style={{ lineHeight: 1.25 }}>{it.val}</div>
-                          <div className="insight-sub">{it.sub}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="glass" style={{ borderRadius: 14, padding: 24, textAlign: "center", color: "var(--silver)", fontSize: 13 }}>
-                    Aún no hay suficientes datos. Cuando los participantes elijan sus premios, aparecerán aquí los favoritos. 🔮
-                  </div>
-                )}
-              </div>
             </div>
           );
         })()}
 
         {/* ════ COMPARAR ════ */}
-        {tab === "comparar" && (() => {
+        {tab === "comparar" && (<div>{(() => {
           const today = todayStr();
           const allM = Object.values(MATCHES).flat();
           const lockedDates = [...new Set(allM.filter(m => isLocked(m.date)).map(m => m.date))].sort();
@@ -2299,7 +2335,7 @@ export default function App() {
               <button className="btn btn-primary" style={{ marginTop: 14, width: "100%", padding: "11px 0" }} onClick={() => setCmpWith("__ALL__")}>📊 Ver tabla completa de todos</button>
             </div>
           );
-        })()}
+        })()}{renderDatosCuriosos()}</div>)}
 
         {/* ════ PREMIOS ════ */}
         {tab === "premios" && (() => {
