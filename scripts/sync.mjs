@@ -18,18 +18,7 @@
  */
 import { readFileSync } from "fs";
 import { db } from "../src/firebase.js";
-import { doc, getDoc, setDoc } from "firebase/firestore";
-
-const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);
-
-function deepMerge(base, patch) {
-  const out = { ...base };
-  for (const k of Object.keys(patch)) {
-    if (isObj(base?.[k]) && isObj(patch[k])) out[k] = deepMerge(base[k], patch[k]);
-    else out[k] = patch[k];
-  }
-  return out;
-}
+import { doc, setDoc } from "firebase/firestore";
 
 function readInput(path) {
   if (path === "-") return readFileSync(0, "utf8"); // stdin
@@ -45,11 +34,10 @@ async function main() {
   const patch = JSON.parse(readInput(path));
 
   const ref = doc(db, "polla2026", "data");
-  const snap = await getDoc(ref);
-  const current = snap.exists() ? snap.data() : {};
-  const next = deepMerge(current, patch);
-
-  await setDoc(ref, next);
+  // MERGE server-side: solo toca los campos del parche, jamás pisa lo de otros
+  // participantes (no hay ventana lectura→escritura como con setDoc del doc entero).
+  // Mapas anidados se fusionan; arrays se REEMPLAZAN (igual que antes).
+  await setDoc(ref, patch, { merge: true });
 
   const keys = Object.keys(patch).join(", ");
   console.log(`✓ Firestore actualizado. Claves modificadas: ${keys}`);

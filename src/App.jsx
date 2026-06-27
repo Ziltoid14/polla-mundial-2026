@@ -2,6 +2,11 @@ import { useState, useEffect, useRef } from "react";
 import { db } from "./firebase";
 import { doc, onSnapshot, setDoc, updateDoc, FieldPath } from "firebase/firestore";
 import { GD, FL, MATCHES, GK } from "./tournament";
+import {
+  getStandings, buildKO, allGroupsDone, pendingGroups, KO_DATES,
+  koSlotPts, koTotalFor, predAdvancer, realAdvancer,
+  KO_ADV, KO_PARTIAL, KO_EXACT, KO_MAX, KO_DRAW_BONUS, KO_MAX_DRAW,
+} from "./knockout";
 
 const ADMIN_PWD = "mundial2026";
 
@@ -29,6 +34,12 @@ const AVATAR_ICONS = [
 /* La más reciente arriba. Al cambiar la primera versión, el pop-up de novedades
    vuelve a aparecer una vez para todos. Se muestran las 2 últimas. */
 const CHANGELOG = [
+  { v: "1.8", date: "27 jun", items: [
+    "🗝️ ¡NUEVA FASE DE ELIMINACIÓN! (primera pestaña). Predices el marcador de cada cruce de la llave… ¡y suma puntos! El cuadro se arma solo con la estructura oficial del Mundial 2026 a partir de los resultados de los grupos.",
+    "🎯 Cómo puntúa (igual en todas las rondas): quién avanza +3 · diferencia o goles de un equipo +2 · marcador exacto +5 → máx 8 por cruce. 🔥 ¡Clavar un empate exacto y acertar los penales suma 10! Si predices empate, eliges quién pasa. Detalle en 'ℹ️ Cómo se puntúa'.",
+    "⏰ La llave ya está activa: predice los cruces que ya tienen a sus dos equipos. Cada partido se bloquea el día que se juega; atento a los avisos de cuántos faltan por predecir.",
+    "🛠️ Arreglo importante: los pronósticos cargados el día antes ya no se borran. Además se corrigieron las fechas de Francia-Noruega y Senegal-Irak.",
+  ]},
   { v: "1.7", date: "22 jun", items: [
     "🔐 Tu perfil queda guardado: ya no hay que ingresar la contraseña cada vez que abres la app (usa 'Salir' para cambiar de perfil).",
     "📊 'Datos curiosos' se movió a la pestaña Comparar.",
@@ -92,24 +103,6 @@ const totalPts=(name,preds,results)=>Object.values(MATCHES).flat().reduce((s,m)=
 const countExact=(name,preds,results)=>Object.values(MATCHES).flat().filter(m=>isExact(preds[name]?.[m.id],results[m.id])).length;
 const countWinners=(name,preds,results)=>Object.values(MATCHES).flat().filter(m=>gotWinner(preds[name]?.[m.id],results[m.id])).length;
 const countPlayed=(name,preds,results)=>Object.values(MATCHES).flat().filter(m=>getPts(preds[name]?.[m.id],results[m.id])!=null).length;
-
-const getStandings=(g,results)=>{
-  const st={};
-  GD[g].forEach(t=>(st[t]={pts:0,gf:0,ga:0,gd:0,p:0,w:0,d:0,l:0}));
-  MATCHES[g].forEach(m=>{
-    const r=results[m.id];
-    if(!r||r.h==null||r.a==null) return;
-    const[h,a]=[+r.h,+r.a];
-    if(isNaN(h)||isNaN(a)) return;
-    st[m.home].p++;st[m.away].p++;
-    st[m.home].gf+=h;st[m.home].ga+=a;st[m.home].gd+=h-a;
-    st[m.away].gf+=a;st[m.away].ga+=h;st[m.away].gd+=a-h;
-    if(h>a){st[m.home].pts+=3;st[m.home].w++;st[m.away].l++;}
-    else if(h<a){st[m.away].pts+=3;st[m.away].w++;st[m.home].l++;}
-    else{st[m.home].pts++;st[m.away].pts++;st[m.home].d++;st[m.away].d++;}
-  });
-  return GD[g].map(t=>({t,...st[t]})).sort((a,b)=>b.pts-a.pts||b.gd-a.gd||b.gf-a.gf);
-};
 
 const fmtDate=(d)=>{
   if(!d) return "";
@@ -179,57 +172,9 @@ const extrasPts = (name, extras, er) =>
   }, 0);
 
 const grandTotal = (name, data) =>
-  totalPts(name, data.predictions, data.results) + extrasPts(name, data.extras || {}, data.extrasResults || {});
-
-/* ═══════════════════════ BRACKET (eliminación) ═══════════════════════ */
-// Posiciones de siembra estándar para 32 equipos (mantiene a los mejores separados)
-const SEED_POSITIONS = [1,32,16,17,8,25,9,24,4,29,13,20,5,28,12,21,2,31,15,18,7,26,10,23,3,30,14,19,6,27,11,22];
-const ROUNDS = [
-  { id: "R32", n: 16, label: "16avos" },
-  { id: "R16", n: 8,  label: "Octavos" },
-  { id: "QF",  n: 4,  label: "Cuartos" },
-  { id: "SF",  n: 2,  label: "Semis" },
-  { id: "F",   n: 1,  label: "Final" },
-];
-
-// 32 clasificados (1°+2° de cada grupo + 8 mejores 3°) según las predicciones de grupo de la persona
-const getQualified = (predForPerson) => {
-  const rankPerf = (a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf;
-  const firsts = [], seconds = [], thirdsAll = [];
-  GK.forEach(g => {
-    const st = getStandings(g, predForPerson || {});
-    if (st[0]) firsts.push(st[0]);
-    if (st[1]) seconds.push(st[1]);
-    if (st[2]) thirdsAll.push(st[2]);
-  });
-  const thirds = [...thirdsAll].sort(rankPerf).slice(0, 8);
-  return [...[...firsts].sort(rankPerf), ...[...seconds].sort(rankPerf), ...[...thirds].sort(rankPerf)].map(x => x.t);
-};
-
-// Construye todas las rondas a partir de los 32 sembrados y las elecciones del usuario.
-// Parte SIN ganadores: cada cruce avanza solo cuando el usuario elige un equipo.
-const buildBracket = (seeds, picks) => {
-  const winnerOf = (rid, idx, a, b) => {
-    if (!a || !b) return null;            // falta algún equipo todavía
-    const p = picks?.[`${rid}-${idx}`];
-    return (p === a || p === b) ? p : null; // null = aún no se elige
-  };
-  const roundsData = [];
-  let prevWinners = null;
-  ROUNDS.forEach((R, ri) => {
-    const matches = [];
-    for (let i = 0; i < R.n; i++) {
-      let a, b;
-      if (ri === 0) { a = seeds[SEED_POSITIONS[2 * i] - 1]; b = seeds[SEED_POSITIONS[2 * i + 1] - 1]; }
-      else { a = prevWinners[2 * i]; b = prevWinners[2 * i + 1]; }
-      const w = winnerOf(R.id, i, a, b);
-      matches.push({ a, b, w, idx: i });
-    }
-    roundsData.push({ ...R, matches });
-    prevWinners = matches.map(m => m.w);
-  });
-  return { roundsData, champion: prevWinners[0] || null };
-};
+  totalPts(name, data.predictions, data.results)
+  + extrasPts(name, data.extras || {}, data.extrasResults || {})
+  + koTotalFor(name, data);
 
 /* ═══════════════════════ DESIGN TOKENS ═══════════════════════ */
 const CSS = `
@@ -747,6 +692,55 @@ const CSS = `
   .bk-zoom { display:flex; align-items:center; gap:5px; }
   .bk-zoom-btn { padding:5px 12px !important; font-size:17px !important; line-height:1; font-weight:700; }
 
+  /* ═══ ELIMINACIÓN — tarjetas de predicción ═══ */
+  .ko-card {
+    background:rgba(15,31,66,0.5); border:1px solid var(--glass-b);
+    border-radius:12px; padding:12px 14px; margin-bottom:10px;
+    transition:border-color 0.18s, background 0.18s;
+  }
+  .ko-card.open { border-color:rgba(59,130,246,0.35); background:rgba(37,99,235,0.07); }
+  .ko-card.locked { opacity:0.85; }
+  .ko-card.pending { border-style:dashed; opacity:0.7; color:var(--silver); font-size:13px; }
+  .ko-top { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:9px; }
+  .ko-date { font-size:11.5px; color:var(--silver); letter-spacing:0.3px; }
+  .ko-chip { font-size:10.5px; font-weight:600; letter-spacing:0.5px; padding:2px 9px; border-radius:50px; border:1px solid currentColor; text-transform:uppercase; }
+  .ko-pending-msg { font-size:12.5px; color:var(--silver); line-height:1.5; }
+  .ko-grid { display:grid; grid-template-columns:1fr auto 1fr; gap:8px; align-items:center; }
+  .ko-side { display:flex; align-items:center; gap:7px; min-width:0; }
+  .ko-side.right { justify-content:flex-end; }
+  .ko-side .ko-flag { font-size:21px; line-height:1; flex-shrink:0; }
+  .ko-side .ko-name { font-family:'DM Sans',sans-serif; font-size:13.5px; font-weight:500; color:var(--silver-l); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ko-side.adv .ko-name { color:var(--gold-l); font-weight:700; }
+  .ko-side.adv .ko-flag { filter:drop-shadow(0 0 5px rgba(245,158,11,0.6)); }
+  .ko-side.out { opacity:0.5; }
+  .ko-side.out .ko-flag { filter:grayscale(0.5); }
+  .ko-mid { display:flex; align-items:center; gap:5px; flex-shrink:0; }
+  .ko-score { width:40px; height:38px; font-size:17px; }
+  .ko-dash { color:var(--silver); font-size:15px; }
+  .ko-pred-sc { font-family:'Oswald',sans-serif; font-size:16px; font-weight:600; color:var(--silver-l); min-width:44px; text-align:center; }
+  .ko-pen { display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin-top:10px; padding-top:10px; border-top:1px dashed rgba(148,163,184,0.15); font-size:12px; color:var(--silver); }
+  .ko-pen-btn {
+    display:inline-flex; align-items:center; gap:5px; padding:5px 11px; border-radius:50px; cursor:pointer;
+    background:rgba(15,31,66,0.6); border:1.5px solid rgba(148,163,184,0.2); color:var(--silver-l);
+    font-family:'DM Sans',sans-serif; font-size:12px; font-weight:500; transition:all 0.16s;
+  }
+  .ko-pen-btn:hover { border-color:var(--blue-l); color:var(--white); }
+  .ko-pen-btn.active { background:rgba(245,158,11,0.18); border-color:var(--gold); color:var(--gold-l); font-weight:600; }
+  .ko-yourpred { margin-top:9px; font-size:12px; color:var(--silver); }
+  .ko-real { margin-top:10px; padding-top:9px; border-top:1px solid rgba(148,163,184,0.12); display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:12.5px; color:var(--silver-l); }
+  .ko-pts { font-family:'DM Sans',sans-serif; font-size:11.5px; font-weight:600; padding:2px 10px; border-radius:50px; background:rgba(148,163,184,0.12); color:var(--silver); }
+  .ko-pts.good { background:rgba(245,158,11,0.18); color:var(--gold-l); }
+  .ko-admin-btn {
+    margin-top:10px; width:100%; padding:7px 0; border-radius:8px; cursor:pointer;
+    background:rgba(37,99,235,0.12); border:1px solid rgba(59,130,246,0.35); color:var(--blue-xl);
+    font-family:'DM Sans',sans-serif; font-size:12px; font-weight:600; transition:all 0.16s;
+  }
+  .ko-admin-btn:hover { background:rgba(37,99,235,0.2); color:var(--white); }
+  @media (max-width:640px) {
+    .ko-side .ko-name { font-size:12px; }
+    .ko-score { width:36px; height:36px; font-size:15px; }
+  }
+
   /* ═══ AGENDA / PARTIDOS DE HOY ═══ */
   .mini-row { display:grid; grid-template-columns:50px 1fr 76px 1fr auto; gap:8px; align-items:center; padding:10px 14px; border-bottom:1px solid rgba(148,163,184,0.07); }
   .mini-zlabel { font-size:8px; letter-spacing:0.6px; color:var(--silver); font-weight:700; line-height:1.2; margin-bottom:1px; }
@@ -1068,7 +1062,7 @@ function CountUp({ value, dur = 700 }) {
 
 /* ═══════════════════════ APP ═══════════════════════ */
 const DOC_REF = doc(db, "polla2026", "data");
-const EMPTY   = { participants: [], predictions: {}, results: {}, resultsBy: {}, passwords: {}, extras: {}, extrasResults: {}, brackets: {}, icons: {} };
+const EMPTY   = { participants: [], predictions: {}, results: {}, resultsBy: {}, passwords: {}, extras: {}, extrasResults: {}, brackets: {}, icons: {}, koPreds: {}, koResults: {}, koResultsBy: {} };
 
 /* set inmutable de un valor anidado: setIn(obj, ["predictions","Cata","I03","h"], 3) */
 const setIn = (obj, path, val) => {
@@ -1123,6 +1117,8 @@ export default function App() {
   const [showScoring, setShowScoring] = useState(false);
   const [resEdit, setResEdit] = useState(null); // { id, h, a } cargando resultado
   const [saveErr, setSaveErr] = useState(false); // falló un guardado (conexión)
+  const [koRound, setKoRound] = useState("R32"); // ronda activa en el tab Eliminación
+  const [koResEdit, setKoResEdit] = useState(null); // { slot, home, away, h, a, adv } admin cargando resultado KO
 
   /* Pop-up de novedades: aparece una vez cuando hay una versión nueva */
   useEffect(() => {
@@ -1377,14 +1373,26 @@ export default function App() {
     writeField(["extrasResults", catId], val);
   };
 
-  const setBracketPick = (slotId, team) => {
+  /* ── Eliminación: predicción de marcador (granular, no pisa a nadie) ── */
+  const setKoPred = (slot, side, val) => {
     if (!person) return;
-    writeField(["brackets", person, slotId], team);
+    writeField(["koPreds", person, slot, side], val);
   };
-
-  const resetBracket = () => {
+  // Penal: a quién hace avanzar la persona cuando predice empate
+  const setKoAdv = (slot, team) => {
     if (!person) return;
-    writeField(["brackets", person], {});
+    writeField(["koPreds", person, slot, "adv"], team);
+  };
+  // Carga del resultado real de un cruce (solo admin). adv = quién avanzó (resuelto).
+  const saveKoResult = (slot, h, a, advPick, teamA, teamB) => {
+    const cl = (v) => Math.max(0, Math.min(30, Math.round(+v || 0)));
+    const H = cl(h), A = cl(a);
+    const adv = H > A ? teamA : A > H ? teamB : (advPick === teamA || advPick === teamB ? advPick : null);
+    writeFields([
+      [["koResults", slot], { h: H, a: A, adv }],
+      [["koResultsBy", slot], { by: person || "admin", at: new Date().toISOString() }],
+    ]);
+    setKoResEdit(null);
   };
 
   const switchGrp = (g) => { setGrp(g); setGrpKey(k => k + 1); };
@@ -1599,6 +1607,11 @@ export default function App() {
                 <b style={{ color: "var(--gold-l)" }}>🎯 Marcador exacto = 5 pts</b> (máximo).<br />
                 Ganador + un equipo bien = 3 · Solo ganador = 2 · Solo goles de un equipo = 1 · Todo mal = 0.
               </div>
+              <div style={{ marginTop: 14, padding: "12px 14px", borderRadius: 12, background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)", fontSize: 12.5, color: "var(--silver-l)", lineHeight: 1.7 }}>
+                <b style={{ color: "var(--blue-xl)" }}>🗝️ Fase de eliminación</b> (igual en todas las rondas):<br />
+                Acertar quién avanza <b style={{ color: "var(--gold-l)" }}>+{KO_ADV}</b> · diferencia de goles o goles de un equipo <b style={{ color: "var(--gold-l)" }}>+{KO_PARTIAL}</b> · marcador exacto de los 90' <b style={{ color: "var(--gold-l)" }}>+{KO_EXACT}</b> → máximo <b style={{ color: "var(--gold-l)" }}>{KO_MAX}</b> por cruce.<br />
+                Si predices empate, eliges quién pasa por penales (cuenta para el "+{KO_ADV} quién avanza"). 🔥 <b style={{ color: "var(--gold-l)" }}>Clavar un empate exacto y acertar los penales suma {KO_MAX_DRAW}</b> (bono de +{KO_DRAW_BONUS} por el riesgo).
+              </div>
               <div style={{ marginTop: 12, fontSize: 11.5, color: "var(--silver)" }}>
                 <b>Premios:</b> Campeón 40 · Subcampeón 25 · 3er puesto 15 · Goleador 35 · MVP 15 · Guante de Oro 15.
               </div>
@@ -1628,6 +1641,40 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {koResEdit && (() => {
+        const tie = koResEdit.h !== "" && koResEdit.a !== "" && +koResEdit.h === +koResEdit.a;
+        const canSave = koResEdit.h !== "" && koResEdit.a !== "" && (!tie || koResEdit.adv === koResEdit.home || koResEdit.adv === koResEdit.away);
+        return (
+          <div className="modal" onClick={e => e.target === e.currentTarget && setKoResEdit(null)}>
+            <div className="glass" style={{ borderRadius: 16, padding: 24, width: 380, maxWidth: "92vw" }}>
+              <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 19, fontWeight: 600, letterSpacing: 1 }}>🗝️ RESULTADO DE ELIMINACIÓN</div>
+              <div style={{ fontSize: 12.5, color: "var(--silver)", marginBottom: 18 }}>Marcador de los 90'. El ganador avanza en la llave y suma puntos a todos.</div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 16 }}>
+                <div style={{ textAlign: "center", width: 78 }}><div style={{ fontSize: 30 }}>{FL[koResEdit.home] || "🏳️"}</div><div style={{ fontSize: 11.5, color: "var(--silver)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{koResEdit.home}</div></div>
+                <input type="number" min="0" max="30" className="score-inp" style={{ width: 50 }} value={koResEdit.h} autoFocus onChange={e => setKoResEdit(re => ({ ...re, h: e.target.value }))} />
+                <span style={{ fontSize: 20, color: "var(--silver)" }}>-</span>
+                <input type="number" min="0" max="30" className="score-inp" style={{ width: 50 }} value={koResEdit.a} onChange={e => setKoResEdit(re => ({ ...re, a: e.target.value }))} />
+                <div style={{ textAlign: "center", width: 78 }}><div style={{ fontSize: 30 }}>{FL[koResEdit.away] || "🏳️"}</div><div style={{ fontSize: 11.5, color: "var(--silver)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{koResEdit.away}</div></div>
+              </div>
+              {tie && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, color: "var(--gold-l)", textAlign: "center", marginBottom: 8 }}>Empate en los 90' → ¿quién avanzó por penales?</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {[koResEdit.home, koResEdit.away].map(t => (
+                      <button key={t} className={`ko-pen-btn${koResEdit.adv === t ? " active" : ""}`} style={{ flex: 1, justifyContent: "center" }} onClick={() => setKoResEdit(re => ({ ...re, adv: t }))}>{FL[t]} {t}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 10 }}>
+                <button className="btn btn-primary" style={{ flex: 1, padding: "11px 0" }} disabled={!canSave} onClick={() => saveKoResult(koResEdit.slot, koResEdit.h, koResEdit.a, koResEdit.adv, koResEdit.home, koResEdit.away)}>Guardar</button>
+                <button className="btn btn-ghost" onClick={() => setKoResEdit(null)}>Cancelar</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {showNotes && (
         <div className="modal" onClick={e => e.target === e.currentTarget && dismissNotes()}>
@@ -1855,13 +1902,13 @@ export default function App() {
       <div style={{ background: "rgba(6,14,38,0.85)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderBottom: "1px solid rgba(148,163,184,0.08)", overflowX: "auto", position: "sticky", top: 0, zIndex: 100 }}>
         <div style={{ maxWidth: "var(--container)", margin: "0 auto", display: "flex", padding: "0 12px" }}>
           {[
+            { id: "bracket", label: "🗝️  Eliminación" },
             { id: "predicciones", label: "⚽  Predicciones" },
             { id: "hoy", label: "📅  Hoy" },
             { id: "comparar", label: "🆚  Comparar" },
             { id: "premios", label: "🎖️  Premios" },
             { id: "clasificacion", label: "🏆  Clasificación" },
             { id: "llave", label: "📊  Grupos" },
-            { id: "bracket", label: "🔮  Eliminación" },
             { id: "participantes", label: "👥  Participantes" },
           ].map(t => (
             <button key={t.id} className={`tab-btn${tab === t.id ? " active" : ""}`} onClick={() => setTab(t.id)}>{t.label}</button>
@@ -2639,66 +2686,225 @@ export default function App() {
             </div>
             <div style={{ marginTop: 12 }} className="glass-sm">
               <div style={{ padding: "12px 16px", borderRadius: 10, fontSize: 12, color: "var(--silver)" }}>
-                ℹ️  Jornadas finales simultáneas: Grupos A–C el 24 jun · D–F el 25 jun · G–H el 26 jun · I–L el 27 jun
+                ℹ️  Jornadas finales simultáneas: Grupos A–C el 24 jun · D–F el 25 jun · G–I el 26 jun · J–L el 27 jun
               </div>
             </div>
           </div>
         )}
 
-        {/* ════ ELIMINACIÓN (bracket) ════ */}
+        {/* ════ ELIMINACIÓN (predicción real + llave) ════ */}
         {tab === "bracket" && (() => {
           const canEdit = !!person && !isAI(person) && (adminMode || authed.has(person));
-          const hideBracket = isAI(person) && !adminMode;
-          const predForPerson = person ? (data.predictions[person] || {}) : {};
-          const seeds = getQualified(predForPerson);
-          const picks = person ? ((data.brackets || {})[person] || {}) : {};
-          const { roundsData, champion } = buildBracket(seeds, picks);
-          const confettiBits = ["🎉","🎊","⚽","✨","🏅","🎉","⭐","🎊"];
-          // Podio: campeón, subcampeón y partido por el 3er lugar
-          const sfRound = roundsData.find(r => r.id === "SF");
-          const fRound  = roundsData.find(r => r.id === "F");
-          const fMatch  = fRound?.matches[0];
+          const hideKO = isAI(person) && !adminMode;
+          const koResults = data.koResults || {};
+          const myPreds = person ? (data.koPreds?.[person] || {}) : {};
+          const { rounds: roundsData, thirdPlace: tp, champion } = buildKO(data.results || {}, koResults);
+          const anyResolved = roundsData[0].matches.some(m => m.a || m.b); // ya hay al menos un grupo cerrado
+          const groupsDone = allGroupsDone(data.results || {});
+          const pend  = pendingGroups(data.results || {});   // grupos que faltan terminar
+          const fMatch = roundsData.find(R => R.id === "F")?.matches[0];
           const runnerUp = (fMatch && fMatch.w) ? (fMatch.a === fMatch.w ? fMatch.b : fMatch.a) : null;
-          const sfLosers = sfRound ? sfRound.matches.map(m => (m.w ? (m.a === m.w ? m.b : m.a) : null)) : [null, null];
-          const tpReady = !!(sfLosers[0] && sfLosers[1]);
-          const tpPick  = picks["TP-0"];
-          const third   = (tpReady && (tpPick === sfLosers[0] || tpPick === sfLosers[1])) ? tpPick : null;
-          const fourth  = third ? (third === sfLosers[0] ? sfLosers[1] : sfLosers[0]) : null;
+          const third = tp.w;
+          const confettiBits = ["🎉","🎊","⚽","✨","🏅","🎉","⭐","🎊"];
+
+          const ROUND_DEFS = [
+            { id: "R32", label: "16avos",  total: 16 },
+            { id: "R16", label: "Octavos", total: 8 },
+            { id: "QF",  label: "Cuartos", total: 4 },
+            { id: "SF",  label: "Semis",   total: 2 },
+            { id: "F",   label: "Final",   total: 1 },
+          ];
+          const PREV_LABEL = { R32: "los grupos", R16: "los 16avos", QF: "los octavos", SF: "los cuartos", F: "las semis", TP: "las semis" };
+          const isFilled = (p) => p && p.h !== "" && p.h != null && p.a !== "" && p.a != null;
+
+          // Cruces de una ronda (con slot/equipos); en la Final se anexa el 3er puesto
+          const roundMatches = (rid) => {
+            const R = roundsData.find(x => x.id === rid);
+            if (!R) return [];
+            const list = R.matches.map(m => ({ slot: m.slot, a: m.a, b: m.b }));
+            if (rid === "F" && (tp.a || tp.b)) list.push({ slot: "TP-0", a: tp.a, b: tp.b, isTP: true });
+            return list;
+          };
+          const slotState = (slot, a, b) => {
+            const res = koResults[slot];
+            const decided = !!(res && res.h != null && res.a != null);
+            const teamsKnown = !!(a && b);
+            const date = KO_DATES[slot];
+            const locked = decided || isLocked(date);
+            return { res, decided, teamsKnown, date, locked, open: teamsKnown && !locked, pending: !teamsKnown };
+          };
+          const pendingToPredict = (rid) => roundMatches(rid).filter(m => {
+            const s = slotState(m.slot, m.a, m.b);
+            return s.open && !isFilled(myPreds[m.slot]);
+          }).length;
+          const totalPending = (canEdit && anyResolved) ? ROUND_DEFS.reduce((s, r) => s + pendingToPredict(r.id), 0) : 0;
+
           return (
             <div>
               <div className="section-header" style={{ marginBottom: 6, display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
                 <h2 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 30, fontWeight: 700, letterSpacing: 3 }}>ELIMINACIÓN</h2>
-                <span style={{ fontSize: 13, color: "var(--silver)" }}>simulador · NO afecta tu puntaje</span>
+                <span style={{ fontSize: 13, color: "var(--gold-l)", fontWeight: 600 }}>¡suma puntos!</span>
               </div>
-              <p style={{ fontSize: 12, color: "var(--silver)", marginBottom: 14, maxWidth: 620, lineHeight: 1.6 }}>
-                El cuadro se arma con <strong style={{ color: "var(--white)" }}>tus predicciones de grupos</strong> (1° y 2° de cada grupo + los 8 mejores terceros). Haz clic en un equipo para hacerlo avanzar y ve quién sería tu campeón. 🏆
+              <p style={{ fontSize: 12.5, color: "var(--silver)", marginBottom: 14, maxWidth: 640, lineHeight: 1.6 }}>
+                Predice el <strong style={{ color: "var(--white)" }}>marcador de cada cruce</strong>. Quién avanza <b style={{ color: "var(--gold-l)" }}>+{KO_ADV}</b> · diferencia o goles de un equipo <b style={{ color: "var(--gold-l)" }}>+{KO_PARTIAL}</b> · marcador exacto <b style={{ color: "var(--gold-l)" }}>+{KO_EXACT}</b> (máx {KO_MAX}). 🔥 <b style={{ color: "var(--gold-l)" }}>¡Empate exacto + acertar los penales = {KO_MAX_DRAW}!</b> La <b style={{ color: "var(--gold-l)" }}>línea dorada</b> marca quién avanzó de verdad. 🗝️
               </p>
 
-              {/* Participant selector */}
+              {/* Selector de participante */}
               <div className="glass" style={{ borderRadius: 14, padding: "14px 18px", marginBottom: 16 }}>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                   <span style={{ fontSize: 11, letterSpacing: 2, color: "var(--silver)", fontWeight: 500, marginRight: 4 }}>PARTICIPANTE</span>
                   {!data.participants.length && <span style={{ fontSize: 14, color: "var(--silver)" }}>Agrega participantes primero</span>}
                   {renderPartChips()}
-                  {person && !hideBracket && (
-                    <div className="bk-zoom" style={{ marginLeft: "auto" }}>
-                      <button className="btn btn-ghost bk-zoom-btn" title="Alejar" onClick={() => setBkZoom(z => Math.max(0.5, +(z - 0.1).toFixed(2)))}>−</button>
-                      <span style={{ fontSize: 12, color: "var(--silver)", minWidth: 40, textAlign: "center", fontFamily: "'Oswald',sans-serif" }}>{Math.round(bkZoom * 100)}%</span>
-                      <button className="btn btn-ghost bk-zoom-btn" title="Acercar" onClick={() => setBkZoom(z => Math.min(1.3, +(z + 0.1).toFixed(2)))}>+</button>
-                      <button className="btn btn-ghost" style={{ fontSize: 11, padding: "6px 10px" }} title="Restablecer zoom" onClick={() => setBkZoom(1)}>100%</button>
-                    </div>
-                  )}
-                  {canEdit && <button className="btn btn-ghost" style={{ marginLeft: person && !hideBracket ? 0 : "auto" }} onClick={resetBracket}>↺ Reiniciar</button>}
                 </div>
               </div>
 
               {!person ? (
-                <div style={{ padding: "36px", textAlign: "center", color: "var(--silver)", fontSize: 14 }}>Selecciona un participante para ver su cuadro</div>
-              ) : hideBracket ? (
-                <div className="glass" style={{ borderRadius: 14, padding: "36px", textAlign: "center", color: "var(--silver)", fontSize: 14 }}>🔒 El cuadro de eliminación de las IA está oculto.</div>
+                <div className="glass" style={{ borderRadius: 14, padding: "44px 24px", textAlign: "center" }}>
+                  <div style={{ fontSize: 40, marginBottom: 10 }}>🗝️</div>
+                  <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 20, fontWeight: 600, letterSpacing: 1, marginBottom: 6 }}>Selecciona tu perfil</div>
+                  <div style={{ fontSize: 13.5, color: "var(--silver)" }}>Elige tu perfil arriba para predecir los cruces de eliminación.</div>
+                </div>
+              ) : hideKO ? (
+                <div className="glass" style={{ borderRadius: 14, padding: "36px", textAlign: "center", color: "var(--silver)", fontSize: 14 }}>🔒 Los pronósticos de eliminación de las IA están ocultos.</div>
+              ) : !anyResolved ? (
+                <div className="glass" style={{ borderRadius: 14, padding: "30px 24px", textAlign: "center" }}>
+                  <div style={{ fontSize: 38, marginBottom: 10 }}>⏳</div>
+                  <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 19, fontWeight: 600, letterSpacing: 1, marginBottom: 8 }}>El cuadro se activa al cerrarse los grupos</div>
+                  <div style={{ fontSize: 13, color: "var(--silver)", maxWidth: 460, margin: "0 auto", lineHeight: 1.6 }}>
+                    Apenas termine un grupo, sus clasificados aparecen en la llave y podrás predecir los cruces que ya tengan a sus dos equipos.
+                  </div>
+                </div>
               ) : (<>
+                {/* Nota: cuadro parcial mientras faltan grupos (terceros pendientes) */}
+                {!groupsDone && (
+                  <div className="glass-sm" style={{ borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 12.5, color: "var(--silver-l)", lineHeight: 1.55 }}>
+                    🗝️ La llave ya está activa: predice los cruces que <b style={{ color: "var(--white)" }}>ya tienen a sus dos equipos</b>. Los cruces con un <b>3er lugar</b> y los de los grupos que faltan ({pend.join(" · ")}) se abrirán al terminar esos grupos.
+                  </div>
+                )}
+                {/* Aviso de pendientes por predecir */}
+                {canEdit && totalPending > 0 && (
+                  <div className="pend-notice" style={{ marginBottom: 14 }}>
+                    <span>⚠️ Tienes <b>{totalPending}</b> partido{totalPending !== 1 ? "s" : ""} de eliminación disponible{totalPending !== 1 ? "s" : ""} por predecir. ¡No te quedes fuera!</span>
+                  </div>
+                )}
+
+                {/* Selector de ronda */}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14, alignItems: "center" }}>
+                  <span style={{ fontSize: 11, color: "var(--silver)", letterSpacing: 1.5, marginRight: 4, fontWeight: 500 }}>RONDA</span>
+                  {ROUND_DEFS.map(r => {
+                    const ms = roundMatches(r.id);
+                    const ready = ms.some(m => slotState(m.slot, m.a, m.b).teamsKnown);
+                    const pp = pendingToPredict(r.id);
+                    return (
+                      <button key={r.id} className={`part-chip${koRound === r.id ? " active" : ""}`} onClick={() => setKoRound(r.id)} style={{ opacity: ready ? 1 : 0.5 }}>
+                        {r.label}
+                        {!ready ? " 🔒" : pp > 0 ? <span style={{ marginLeft: 6, background: "var(--gold)", color: "#1a1206", borderRadius: 10, padding: "1px 7px", fontSize: 11, fontWeight: 700 }}>{pp}</span>
+                          : <span style={{ marginLeft: 5, color: "var(--emerald)" }}>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Cruces de la ronda seleccionada */}
+                {(() => {
+                  const def = ROUND_DEFS.find(r => r.id === koRound);
+                  const ms = roundMatches(koRound);
+                  const pp = pendingToPredict(koRound);
+                  return (
+                    <div style={{ marginBottom: 22 }}>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+                        <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 18, fontWeight: 600, letterSpacing: 1 }}>{def?.label}</span>
+                        {canEdit && (pp > 0
+                          ? <span style={{ fontSize: 12.5, color: "var(--gold-l)" }}>te faltan {pp} por predecir</span>
+                          : ms.some(m => slotState(m.slot, m.a, m.b).open) ? <span style={{ fontSize: 12.5, color: "var(--emerald)" }}>✓ todo predicho</span> : null)}
+                      </div>
+                      {ms.length === 0 ? (
+                        <div className="ko-card pending">⏳ Aún no hay cruces en esta ronda.</div>
+                      ) : ms.map(m => {
+                        const s = slotState(m.slot, m.a, m.b);
+                        const pred = myPreds[m.slot] || {};
+                        const hasPred = isFilled(pred);
+                        const radv = s.res ? realAdvancer(s.res, m.a, m.b) : null;
+                        const padv = predAdvancer(pred, m.a, m.b);
+                        const predDraw = hasPred && +pred.h === +pred.a;
+                        const pts = s.decided ? koSlotPts(pred, s.res, m.a, m.b) : null;
+                        const stateCls = s.pending ? "pending" : s.open ? "open" : "locked";
+                        const chip = s.pending ? { t: "Pendiente", c: "var(--silver)" }
+                          : s.decided ? { t: "Jugado", c: "var(--emerald)" }
+                          : s.open ? { t: "Abierto", c: "var(--blue-xl)" }
+                          : { t: "Cerrado", c: "var(--rose)" };
+                        return (
+                          <div key={m.slot} className={`ko-card ${stateCls}`}>
+                            <div className="ko-top">
+                              <span className="ko-date">{m.isTP ? "🥉 3er puesto · " : ""}{fmtDate(s.date)}</span>
+                              <span className="ko-chip" style={{ color: chip.c, borderColor: chip.c }}>{chip.t}</span>
+                            </div>
+                            {s.pending ? (
+                              <div className="ko-pending-msg">⏳ Se define cuando terminen <b>{PREV_LABEL[koRound] || "la ronda anterior"}</b>.</div>
+                            ) : (<>
+                              <div className="ko-grid">
+                                <div className={`ko-side${radv === m.a ? " adv" : radv ? " out" : ""}`}>
+                                  <span className="ko-flag">{FL[m.a] || "🏳️"}</span><span className="ko-name">{m.a}</span>
+                                </div>
+                                <div className="ko-mid">
+                                  {s.open && canEdit ? (
+                                    <>
+                                      <input type="number" min="0" max="30" className="score-inp ko-score" value={pred.h ?? ""} onChange={e => setKoPred(m.slot, "h", e.target.value)} />
+                                      <span className="ko-dash">-</span>
+                                      <input type="number" min="0" max="30" className="score-inp ko-score" value={pred.a ?? ""} onChange={e => setKoPred(m.slot, "a", e.target.value)} />
+                                    </>
+                                  ) : (
+                                    <span className="ko-pred-sc">{hasPred ? `${pred.h}-${pred.a}` : "—"}</span>
+                                  )}
+                                </div>
+                                <div className={`ko-side right${radv === m.b ? " adv" : radv ? " out" : ""}`}>
+                                  <span className="ko-name">{m.b}</span><span className="ko-flag">{FL[m.b] || "🏳️"}</span>
+                                </div>
+                              </div>
+                              {s.open && canEdit && predDraw && (
+                                <div className="ko-pen">
+                                  <span>Empate → ¿quién pasa por penales?</span>
+                                  <button className={`ko-pen-btn${padv === m.a ? " active" : ""}`} onClick={() => setKoAdv(m.slot, m.a)}>{FL[m.a]} {m.a}</button>
+                                  <button className={`ko-pen-btn${padv === m.b ? " active" : ""}`} onClick={() => setKoAdv(m.slot, m.b)}>{FL[m.b]} {m.b}</button>
+                                </div>
+                              )}
+                              {!s.open && hasPred && !s.decided && (
+                                <div className="ko-yourpred">Tu pronóstico: <b>{pred.h}-{pred.a}</b>{predDraw && padv ? ` · pasa ${padv}` : ""}</div>
+                              )}
+                              {s.decided && (
+                                <div className="ko-real">
+                                  <span>Resultado: <b style={{ color: "var(--white)" }}>{s.res.h}-{s.res.a}</b>{radv ? <> · avanza <b style={{ color: "var(--gold-l)" }}>{FL[radv]} {radv}</b></> : ""}</span>
+                                  {hasPred && pts != null && (
+                                    <span className={`ko-pts${pts > 0 ? " good" : ""}`}>tu pronóstico {pred.h}-{pred.a} · +{pts}</span>
+                                  )}
+                                </div>
+                              )}
+                              {adminMode && s.teamsKnown && (
+                                <button className="ko-admin-btn" onClick={() => setKoResEdit({ slot: m.slot, home: m.a, away: m.b, h: s.res?.h ?? "", a: s.res?.a ?? "", adv: s.res?.adv || "" })}>
+                                  📝 {s.res ? "Editar" : "Cargar"} resultado
+                                </button>
+                              )}
+                            </>)}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {/* Llave completa (camino real) */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 16, fontWeight: 600, letterSpacing: 2, color: "var(--blue-xl)" }}>🗝️ LA LLAVE</span>
+                  <span style={{ fontSize: 12, color: "var(--silver)" }}>línea dorada = quién avanzó de verdad</span>
+                  <div className="bk-zoom" style={{ marginLeft: "auto" }}>
+                    <button className="btn btn-ghost bk-zoom-btn" title="Alejar" onClick={() => setBkZoom(z => Math.max(0.5, +(z - 0.1).toFixed(2)))}>−</button>
+                    <span style={{ fontSize: 12, color: "var(--silver)", minWidth: 40, textAlign: "center", fontFamily: "'Oswald',sans-serif" }}>{Math.round(bkZoom * 100)}%</span>
+                    <button className="btn btn-ghost bk-zoom-btn" title="Acercar" onClick={() => setBkZoom(z => Math.min(1.3, +(z + 0.1).toFixed(2)))}>+</button>
+                    <button className="btn btn-ghost" style={{ fontSize: 11, padding: "6px 10px" }} title="Restablecer zoom" onClick={() => setBkZoom(1)}>100%</button>
+                  </div>
+                </div>
                 <div className="bracket-scroll">
-                  <div className={`bracket${canEdit ? "" : " bk-readonly"}`} style={{ zoom: bkZoom }}>
+                  <div className="bracket bk-readonly" style={{ zoom: bkZoom }}>
                     {roundsData.map((R) => (
                       <div key={R.id} className="bk-round">
                         <div className="bk-round-head">{R.label}</div>
@@ -2709,7 +2915,7 @@ export default function App() {
                               const isWin = m.w === t;
                               const cls = `bk-team${isWin ? " win" : ""}${m.w && m.w !== t ? " lose" : ""}`;
                               return (
-                                <div key={`${R.id}-${m.idx}-${t}`} className={cls} onClick={() => canEdit && setBracketPick(`${R.id}-${m.idx}`, t)}>
+                                <div key={`${R.id}-${m.idx}-${t}`} className={cls}>
                                   <span className="bk-flag">{FL[t] || "🏳️"}</span>
                                   <span className="bk-name">{t}</span>
                                 </div>
@@ -2718,9 +2924,7 @@ export default function App() {
                             const cellCls = `bk-cell${m.w ? " bk-won" : ""}${(m.a || m.b) ? " bk-lit" : ""}`;
                             return (
                               <div key={m.idx} className={cellCls}>
-                                <div className="bk-match">
-                                  {renderTeam(m.a, "a")}{renderTeam(m.b, "b")}
-                                </div>
+                                <div className="bk-match">{renderTeam(m.a, "a")}{renderTeam(m.b, "b")}</div>
                               </div>
                             );
                           })}
@@ -2730,30 +2934,7 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Partido por el 3er lugar */}
-                <div style={{ marginTop: 22, maxWidth: 360 }}>
-                  <p style={{ fontSize: 11, letterSpacing: 2, color: "var(--silver)", fontWeight: 600, marginBottom: 8 }}>🥉 PARTIDO POR EL 3ER LUGAR</p>
-                  {tpReady ? (
-                    <div className={`bk-match${canEdit ? "" : " bk-readonly"}`} style={{ maxWidth: 360 }}>
-                      {[sfLosers[0], sfLosers[1]].map((t) => {
-                        const isWin = third === t;
-                        const cls = `bk-team${isWin ? " win" : ""}${third && third !== t ? " lose" : ""}`;
-                        return (
-                          <div key={t} className={cls} onClick={() => canEdit && setBracketPick("TP-0", t)}>
-                            <span className="bk-flag">{FL[t] || "🏳️"}</span>
-                            <span className="bk-name">{t}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div style={{ padding: "14px 16px", borderRadius: 10, background: "rgba(15,31,66,0.5)", border: "1px solid var(--glass-b)", fontSize: 12.5, color: "var(--silver)" }}>
-                      Define las dos semifinales para elegir el 3er lugar.
-                    </div>
-                  )}
-                </div>
-
-                {/* Podio */}
+                {/* Podio real */}
                 <div className="podium-wrap">
                   <div className="podium-title">🏅 PODIO</div>
                   <div className="podium">
@@ -2765,14 +2946,7 @@ export default function App() {
                       <div key={rank} className="pod">
                         <div className="pod-top">
                           <div className="pod-medal">{medal}</div>
-                          {team ? (
-                            <>
-                              <div className="pod-flag">{FL[team] || "🏳️"}</div>
-                              <div className="pod-name">{team}</div>
-                            </>
-                          ) : (
-                            <div className="pod-empty">—</div>
-                          )}
+                          {team ? (<><div className="pod-flag">{FL[team] || "🏳️"}</div><div className="pod-name">{team}</div></>) : (<div className="pod-empty">—</div>)}
                         </div>
                         <div className={`pod-base ${cls}`}>
                           {rank === 1 && team && confettiBits.map((c, i) => (
