@@ -228,11 +228,14 @@ export const koSlotPts = (pred, res, a, b) => {
   const ph = +pred.h, pa = +pred.a, rh = +res.h, ra = +res.a;
   let pts = 0;
   const radv = realAdvancer(res, a, b), padv = predAdvancer(pred, a, b);
-  const advHit = !!(radv && padv && radv === padv);
+  const predDraw = ph === pa, realDraw = rh === ra;
+  // El "+avanza" no cuenta si apostaste un empate pero el partido fue decisivo:
+  // el ganador elegido por penales no vale cuando no hubo penales (solo sumarías los goles).
+  const advHit = !!(radv && padv && radv === padv && (!predDraw || realDraw));
   if (advHit) pts += KO_ADV;
   if (ph === rh && pa === ra) {                                            // marcador exacto
     pts += KO_EXACT;
-    if (rh === ra && advHit) pts += KO_DRAW_BONUS;                         // empate exacto + penal acertado = 10
+    if (realDraw && advHit) pts += KO_DRAW_BONUS;                          // empate exacto + penal acertado = 10
   } else if (ph === rh || pa === ra || (ph - pa) === (rh - ra)) {
     pts += KO_PARTIAL;                                                     // diferencia o goles de un equipo
   }
