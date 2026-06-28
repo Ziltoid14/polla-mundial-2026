@@ -73,6 +73,19 @@ const KO_FEEDS = {
 };
 const ROUND_LABELS = { R32: "16avos", R16: "Octavos", QF: "Cuartos", SF: "Semis", F: "Final" };
 
+/* Orden de VISUALIZACIÓN del cuadro (arriba→abajo), según el árbol oficial 2026.
+   Los datos siguen indexados por nº de partido (R32-0..15 = partidos 73..88); esto solo
+   reordena el dibujo para que cada ganador avance al cruce adyacente que corresponde. */
+export const KO_DISPLAY = {
+  R32: [1, 4, 0, 2, 10, 11, 8, 9, 3, 5, 6, 7, 13, 15, 12, 14],
+  R16: [0, 1, 4, 5, 2, 3, 6, 7],
+  QF:  [0, 1, 2, 3],
+  SF:  [0, 1],
+  F:   [0],
+};
+/* Devuelve los cruces de una ronda en orden de visualización. */
+export const orderedMatches = (round) => (KO_DISPLAY[round.id] || round.matches.map((_, i) => i)).map(i => round.matches[i]);
+
 /* Calendario de la fase final (controla el bloqueo "día antes", en hora de Chile). */
 export const KO_DATES = {
   "R32-0":"2026-06-28","R32-1":"2026-06-29","R32-2":"2026-06-29","R32-3":"2026-06-29",
@@ -161,14 +174,17 @@ export const realAdvancer = (res, a, b) => {
 
 /* Construye todo el cuadro desde los resultados de grupos y los resultados de la fase final.
    Devuelve { rounds:[{id,label,matches:[{slot,a,b,w,idx}]}], thirdPlace, champion }. */
-export const buildKO = (results, koResults) => {
+export const buildKO = (results, koResults, thirdOverride) => {
   const gs = groupSlots(results);
   const thirds = assignThirds(results);
   const kr = koResults || {};
+  const ov = thirdOverride || {};
+  // tercero asignado a un cruce: override del admin (si lo hay) o el automático
+  const thirdAt = (i, slot) => (ov[slot] != null && ov[slot] !== "") ? ov[slot] : (thirds[i] ?? null);
   const r32 = KO_R32.map((def, i) => {
-    const a = def[0] === T ? (thirds[i] ?? null) : (gs[def[0]] ?? null);
-    const b = def[1] === T ? (thirds[i] ?? null) : (gs[def[1]] ?? null);
     const slot = `R32-${i}`;
+    const a = def[0] === T ? thirdAt(i, slot) : (gs[def[0]] ?? null);
+    const b = def[1] === T ? thirdAt(i, slot) : (gs[def[1]] ?? null);
     return { slot, a, b, w: realAdvancer(kr[slot], a, b), idx: i };
   });
   const buildRound = (id, feeds, prev) => feeds.map((f, i) => {
@@ -225,7 +241,7 @@ export const koSlotPts = (pred, res, a, b) => {
 
 /* Total de puntos de eliminación de una persona. */
 export const koTotalFor = (name, data) => {
-  const { rounds, thirdPlace } = buildKO(data.results || {}, data.koResults || {});
+  const { rounds, thirdPlace } = buildKO(data.results || {}, data.koResults || {}, data.koThirds || {});
   const kr = data.koResults || {};
   const myPreds = data.koPreds?.[name] || {};
   let s = 0;

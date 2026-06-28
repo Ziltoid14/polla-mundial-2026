@@ -3,7 +3,7 @@ import { db } from "./firebase";
 import { doc, onSnapshot, setDoc, updateDoc, FieldPath } from "firebase/firestore";
 import { GD, FL, MATCHES, GK } from "./tournament";
 import {
-  getStandings, buildKO, allGroupsDone, pendingGroups, KO_DATES,
+  getStandings, buildKO, bestThirds, allGroupsDone, pendingGroups, KO_DATES, KO_DISPLAY, orderedMatches,
   koSlotPts, koTotalFor, predAdvancer, realAdvancer,
   KO_ADV, KO_PARTIAL, KO_EXACT, KO_MAX, KO_DRAW_BONUS, KO_MAX_DRAW,
 } from "./knockout";
@@ -34,6 +34,12 @@ const AVATAR_ICONS = [
 /* La más reciente arriba. Al cambiar la primera versión, el pop-up de novedades
    vuelve a aparecer una vez para todos. Se muestran las 2 últimas. */
 const CHANGELOG = [
+  { v: "1.9", date: "28 jun", items: [
+    "🗝️ La fase de Eliminación ahora funciona igual que las predicciones de grupo: ves la forma reciente (últimos 5), el historial entre equipos, el resultado real y tus puntos — con elección de quién pasa por penales si hay empate.",
+    "📅 Los partidos de eliminación aparecen en 'Hoy' (cada uno en su día) y en 'Comparar', donde además se ven los puntos que ganó cada uno y el resultado real de cada cruce.",
+    "🔮 El Oráculo y 🧠 el Analista ya tienen sus pronósticos de eliminación: el Oráculo predice solo por fuerza (sin mirar cómo llegan), el Analista sí mira la forma reciente.",
+    "🔧 El cuadro de 16avos quedó afinado (estructura oficial) y se pulieron varios detalles.",
+  ]},
   { v: "1.8", date: "27 jun", items: [
     "🗝️ ¡NUEVA FASE DE ELIMINACIÓN! (primera pestaña). Predices el marcador de cada cruce de la llave… ¡y suma puntos! El cuadro se arma solo con la estructura oficial del Mundial 2026 a partir de los resultados de los grupos.",
     "🎯 Cómo puntúa (igual en todas las rondas): quién avanza +3 · diferencia o goles de un equipo +2 · marcador exacto +5 → máx 8 por cruce. 🔥 ¡Clavar un empate exacto y acertar los penales suma 10! Si predices empate, eliges quién pasa. Detalle en 'ℹ️ Cómo se puntúa'.",
@@ -741,6 +747,17 @@ const CSS = `
     .ko-score { width:36px; height:36px; font-size:15px; }
   }
 
+  .ko-row-wrap { border-bottom:1px solid rgba(148,163,184,0.06); }
+  .ko-row-wrap:last-child { border-bottom:none; }
+  .ko-row-wrap .match-row { border-bottom:none; }
+  .ko-row-wrap .ko-pen { margin:0; padding:2px 18px 11px; border-top:none; }
+
+  .cmp-real td { background:rgba(245,158,11,0.07); }
+  .cmp-row-wrap { border-bottom:1px solid rgba(148,163,184,0.06); }
+  .cmp-row-wrap:last-child { border-bottom:none; }
+  .cmp-row-wrap .cmp-row { border-bottom:none; }
+  .cmp-real-line { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:3px 16px 9px; font-size:11.5px; color:var(--silver-l); }
+
   /* ═══ AGENDA / PARTIDOS DE HOY ═══ */
   .mini-row { display:grid; grid-template-columns:50px 1fr 76px 1fr auto; gap:8px; align-items:center; padding:10px 14px; border-bottom:1px solid rgba(148,163,184,0.07); }
   .mini-zlabel { font-size:8px; letter-spacing:0.6px; color:var(--silver); font-weight:700; line-height:1.2; margin-bottom:1px; }
@@ -1062,7 +1079,7 @@ function CountUp({ value, dur = 700 }) {
 
 /* ═══════════════════════ APP ═══════════════════════ */
 const DOC_REF = doc(db, "polla2026", "data");
-const EMPTY   = { participants: [], predictions: {}, results: {}, resultsBy: {}, passwords: {}, extras: {}, extrasResults: {}, brackets: {}, icons: {}, koPreds: {}, koResults: {}, koResultsBy: {} };
+const EMPTY   = { participants: [], predictions: {}, results: {}, resultsBy: {}, passwords: {}, extras: {}, extrasResults: {}, brackets: {}, icons: {}, koPreds: {}, koResults: {}, koResultsBy: {}, koThirds: {} };
 
 /* set inmutable de un valor anidado: setIn(obj, ["predictions","Cata","I03","h"], 3) */
 const setIn = (obj, path, val) => {
@@ -1394,6 +1411,8 @@ export default function App() {
     ]);
     setKoResEdit(null);
   };
+  // Admin: corrige a mano qué tercero va a un cruce de 16avos (override de la asignación automática)
+  const setKoThird = (slot, team) => { writeField(["koThirds", slot], team || null); };
 
   const switchGrp = (g) => { setGrp(g); setGrpKey(k => k + 1); };
 
@@ -1408,6 +1427,17 @@ export default function App() {
   const totalRes = Object.keys(data.results).filter(k => data.results[k]?.h != null && data.results[k]?.a != null).length;
   const filledP = person ? Object.values(MATCHES).flat().filter(m => { const p = data.predictions[person]?.[m.id]; return p?.h !== "" && p?.h != null && p?.a !== "" && p?.a != null; }).length : 0;
   const pendingP = (person && !isAI(person)) ? Object.values(MATCHES).flat().filter(m => { if (isLocked(m.date)) return false; const p = data.predictions[person]?.[m.id]; return !(p?.h !== "" && p?.h != null && p?.a !== "" && p?.a != null); }).length : 0;
+
+  /* ── Fase final: estructura del cuadro + lista plana de cruces (compartida entre pestañas) ── */
+  const koData = buildKO(data.results || {}, data.koResults || {}, data.koThirds || {});
+  const koMatchList = [
+    ...koData.rounds.flatMap(R => R.matches.map(m => ({ id: m.slot, slot: m.slot, home: m.a, away: m.b, date: KO_DATES[m.slot], ko: true, roundLabel: R.label, w: m.w }))),
+    { id: "TP-0", slot: "TP-0", home: koData.thirdPlace.a, away: koData.thirdPlace.b, date: KO_DATES["TP-0"], ko: true, roundLabel: "3er puesto", w: koData.thirdPlace.w },
+  ];
+  // Accesores unificados (sirven igual para partidos de grupo y de eliminación)
+  const predOfM = (name, m) => m && m.ko ? data.koPreds?.[name]?.[m.slot] : data.predictions[name]?.[m.id];
+  const resOfM  = (m) => m && m.ko ? data.koResults?.[m.slot] : data.results[m.id];
+  const ptsOfM  = (m, pred, res) => m && m.ko ? koSlotPts(pred, res, m.home, m.away) : getPts(pred, res);
 
   const openTip = (el, payload) => {
     const r = el.getBoundingClientRect();
@@ -2045,7 +2075,7 @@ export default function App() {
 
               {MATCHES[grp].map((m, i) => {
                 const dateLocked = isLocked(m.date);
-                const locked = dateLocked || (!authed.has(person) && !adminMode);
+                const locked = adminMode ? false : (dateLocked || !authed.has(person)); // admin puede corregir aunque esté bloqueado
                 const pred = data.predictions[person]?.[m.id] || { h: "", a: "" };
                 const res = data.results[m.id];
                 const p = getPts(pred, res);
@@ -2140,8 +2170,8 @@ export default function App() {
         {/* ════ HOY / AGENDA ════ */}
         {tab === "hoy" && (() => {
           const today = todayStr();
-          const allM = Object.values(MATCHES).flat();
-          const hasRes = (m) => { const r = data.results[m.id]; return r && r.h != null && r.a != null; };
+          const allM = [...Object.values(MATCHES).flat(), ...koMatchList.filter(m => m.home && m.away)];
+          const hasRes = (m) => { const r = resOfM(m); return r && r.h != null && r.a != null; };
           const byDate = (a, b) => (a.date || "9999") < (b.date || "9999") ? -1 : 1;
           const todayMatches = allM.filter(m => m.date === today).sort(byDate);
           const upcoming = allM.filter(m => m.date && m.date > today && !hasRes(m)).sort(byDate).slice(0, 8);
@@ -2149,19 +2179,22 @@ export default function App() {
           const showPred = !!person && !isAI(person);
 
           const renderMini = (m) => {
-            const r = data.results[m.id];
+            const r = resOfM(m);
             const res = hasRes(m);
-            const pred = data.predictions[person]?.[m.id];
+            const pred = predOfM(person, m);
             const hasPred = showPred && pred && pred.h !== "" && pred.h != null && pred.a !== "" && pred.a != null;
-            const p = res && hasPred ? getPts(pred, r) : null;
-            const predColor = p === 5 ? "var(--gold-l)" : p >= 1 ? "var(--emerald)" : p === 0 ? "var(--rose)" : "var(--silver-l)";
-            const goPredict = () => { setTab("predicciones"); switchGrp(m.id[0]); window.scrollTo(0, 0); };
+            const p = res && hasPred ? ptsOfM(m, pred, r) : null;
+            const radv = res && m.ko ? realAdvancer(r, m.home, m.away) : null;
+            const predColor = p == null ? "var(--silver-l)" : (m.ko ? (p >= KO_EXACT ? "var(--gold-l)" : p >= 2 ? "var(--emerald)" : "var(--rose)") : (p === 5 ? "var(--gold-l)" : p >= 1 ? "var(--emerald)" : "var(--rose)"));
+            const goPredict = () => { if (m.ko) { setTab("bracket"); } else { setTab("predicciones"); switchGrp(m.id[0]); } window.scrollTo(0, 0); };
+            const editRes = () => m.ko ? setKoResEdit({ slot: m.slot, home: m.home, away: m.away, h: r.h, a: r.a, adv: r.adv || "" }) : setResEdit({ id: m.id, home: m.home, away: m.away, h: r.h, a: r.a });
+            const loadRes = () => m.ko ? setKoResEdit({ slot: m.slot, home: m.home, away: m.away, h: "", a: "", adv: "" }) : setResEdit({ id: m.id, home: m.home, away: m.away, h: "", a: "" });
             const started = isLocked(m.date);
-            const by = data.resultsBy?.[m.id]?.by;
+            const by = m.ko ? data.koResultsBy?.[m.slot]?.by : data.resultsBy?.[m.id]?.by;
             return (
               <div key={m.id} className={`mini-row${m.date === today ? " today" : ""}`}>
                 <div style={{ fontSize: 11, color: m.date === today ? "var(--gold)" : "var(--silver)", fontWeight: 500 }}>
-                  {fmtDate(m.date)}{m.date === today && <div style={{ fontSize: 8.5, letterSpacing: 0.5, fontWeight: 700 }}>HOY</div>}
+                  {fmtDate(m.date)}{m.ko && <div style={{ fontSize: 8, color: "var(--blue-xl)", letterSpacing: 0.3, fontWeight: 700 }}>🗝️ {m.roundLabel}</div>}{m.date === today && <div style={{ fontSize: 8.5, letterSpacing: 0.5, fontWeight: 700 }}>HOY</div>}
                 </div>
                 <div className="mini-team"><span className="mf">{FL[m.home] || "🏳️"}</span><span className="mn">{m.home}</span></div>
                 <div className="mini-mid">
@@ -2169,11 +2202,12 @@ export default function App() {
                     res ? (<>
                       <div className="mini-zlabel">RESULTADO</div>
                       <div className="mini-score">{r.h}–{r.a}</div>
-                      {person && <button className="res-mini-btn" title="Editar el resultado OFICIAL del partido" onClick={() => setResEdit({ id: m.id, home: m.home, away: m.away, h: r.h, a: r.a })}>✏️</button>}
+                      {radv && +r.h === +r.a && <div style={{ fontSize: 9, color: "var(--gold-l)" }}>pen {FL[radv]} {radv}</div>}
+                      {person && <button className="res-mini-btn" title="Editar el resultado OFICIAL del partido" onClick={editRes}>✏️</button>}
                       {by && <div className="res-by" title={`Resultado cargado por ${displayName(by)}`}>por {displayName(by)}</div>}
                     </>) : (
                       person
-                        ? <button className="res-mini-btn load" title="Cargar el resultado OFICIAL del partido (lo verán todos)" onClick={() => setResEdit({ id: m.id, home: m.home, away: m.away, h: "", a: "" })}>📝 Resultado</button>
+                        ? <button className="res-mini-btn load" title="Cargar el resultado OFICIAL del partido (lo verán todos)" onClick={loadRes}>📝 Resultado</button>
                         : <div className="mini-vs">por jugar</div>
                     )
                   ) : <div className="mini-vs">vs</div>}
@@ -2195,7 +2229,10 @@ export default function App() {
           };
 
           const sectionTitle = (t) => <p style={{ fontSize: 11, letterSpacing: 2, color: "var(--silver)", fontWeight: 600, margin: "0 0 8px 2px" }}>{t}</p>;
-          const pendCount = showPred ? allM.filter(m => { if (isLocked(m.date)) return false; const pr = data.predictions[person]?.[m.id]; return !(pr && pr.h !== "" && pr.h != null && pr.a !== "" && pr.a != null); }).length : 0;
+          const isPredFilled = (pr) => pr && pr.h !== "" && pr.h != null && pr.a !== "" && pr.a != null;
+          const pendList = showPred ? allM.filter(m => m.home && m.away && !isLocked(m.date) && !isPredFilled(predOfM(person, m))) : [];
+          const pendCount = pendList.length;
+          const pendKO = pendList.some(m => m.ko);
 
           return (
             <div>
@@ -2206,8 +2243,8 @@ export default function App() {
 
               {pendCount > 0 && (
                 <div className="pend-notice">
-                  <span>⚠️ Te faltan <b>{pendCount}</b> predicción{pendCount !== 1 ? "es" : ""} por hacer.</span>
-                  <button className="btn btn-primary" style={{ padding: "7px 14px" }} onClick={() => { setTab("predicciones"); window.scrollTo(0, 0); }}>Ir a predecir</button>
+                  <span>⚠️ Te faltan <b>{pendCount}</b> predicci{pendCount !== 1 ? "ones" : "ón"} por hacer{pendKO ? " (incluye eliminación 🗝️)" : ""}.</span>
+                  <button className="btn btn-primary" style={{ padding: "7px 14px" }} onClick={() => { setTab(pendKO ? "bracket" : "predicciones"); window.scrollTo(0, 0); }}>Ir a predecir</button>
                 </div>
               )}
 
@@ -2239,12 +2276,14 @@ export default function App() {
         {/* ════ COMPARAR ════ */}
         {tab === "comparar" && (<div>{(() => {
           const today = todayStr();
-          const allM = Object.values(MATCHES).flat();
+          const allM = [...Object.values(MATCHES).flat(), ...koMatchList.filter(m => m.home && m.away)];
           const lockedDates = [...new Set(allM.filter(m => isLocked(m.date)).map(m => m.date))].sort();
           const day = (cmpDay && lockedDates.includes(cmpDay)) ? cmpDay : (lockedDates[lockedDates.length - 1] || null);
           const dayMatches = day ? allM.filter(m => m.date === day).sort((a, b) => a.id < b.id ? -1 : 1) : [];
           const isFilledC = pr => pr && pr.h !== "" && pr.h != null && pr.a !== "" && pr.a != null;
-          const predOf = (name, m) => data.predictions[name]?.[m.id];
+          const predOf = (name, m) => predOfM(name, m);
+          const ptsFor = (name, m) => { const pr = predOfM(name, m), r = resOfM(m); return (isFilledC(pr) && r && r.h != null && r.a != null) ? ptsOfM(m, pr, r) : null; };
+          const dayPts = (name) => dayMatches.reduce((s, m) => s + (ptsFor(name, m) ?? 0), 0);
           const outc = pr => isFilledC(pr) ? Math.sign((+pr.h) - (+pr.a)) : null;
           const head = (
             <div className="section-header" style={{ marginBottom: 18, display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
@@ -2301,22 +2340,33 @@ export default function App() {
                       <tr>
                         <th style={{ textAlign: "left" }}>PARTICIPANTE</th>
                         {dayMatches.map(m => <th key={m.id} title={`${m.home} vs ${m.away}`}>{FL[m.home] || "🏳️"}<br />{FL[m.away] || "🏳️"}</th>)}
+                        <th>PTS</th>
                         <th>VS TI</th>
                       </tr>
                     </thead>
                     <tbody>
+                      {dayMatches.some(m => { const r = resOfM(m); return r && r.h != null && r.a != null; }) && (
+                        <tr className="cmp-real">
+                          <td style={{ textAlign: "left", color: "var(--gold-l)", fontWeight: 600 }}>✅ RESULTADO REAL</td>
+                          {dayMatches.map(m => { const r = resOfM(m); const radv = r && m.ko ? realAdvancer(r, m.home, m.away) : null; return <td key={m.id} style={{ color: "var(--white)", fontWeight: 600 }}>{r && r.h != null ? `${r.h}-${r.a}` : "—"}{radv && +r.h === +r.a ? <div style={{ fontSize: 9, color: "var(--gold-l)" }}>pen {FL[radv]}</div> : null}</td>; })}
+                          <td></td><td></td>
+                        </tr>
+                      )}
                       {[person, ...others].map(p => {
                         let match = 0, both = 0;
                         dayMatches.forEach(m => { const a = predOf(person, m), b = predOf(p, m); if (isFilledC(a) && isFilledC(b)) { both++; if (+a.h === +b.h && +a.a === +b.a) match++; } });
                         const isMe = p === person;
+                        const dp = dayPts(p);
                         return (
                           <tr key={p} className={isMe ? "cmp-me" : ""}>
                             <td style={{ textAlign: "left" }}><span className="cmp-chip-av" style={{ width: 24, height: 24, fontSize: 13, marginRight: 6, verticalAlign: "middle" }}>{avatarFor(p)}</span>{displayName(p)}{isMe && <span className="lb-me-badge">TÚ</span>}</td>
                             {dayMatches.map(m => {
                               const pr = predOf(p, m), mine = predOf(person, m);
                               const same = !isMe && isFilledC(pr) && isFilledC(mine) && +pr.h === +mine.h && +pr.a === +mine.a;
-                              return <td key={m.id} className={same ? "cmp-same" : ""}>{isFilledC(pr) ? `${pr.h}-${pr.a}` : "—"}</td>;
+                              const mp = ptsFor(p, m);
+                              return <td key={m.id} className={same ? "cmp-same" : ""}>{isFilledC(pr) ? `${pr.h}-${pr.a}` : "—"}{mp != null ? <div style={{ fontSize: 9, color: mp > 0 ? "var(--emerald)" : "var(--silver)", fontWeight: 600 }}>+{mp}</div> : null}</td>;
                             })}
+                            <td style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, color: "var(--gold-l)" }}>{dp}</td>
                             <td>{isMe ? "—" : `${match}/${both}`}</td>
                           </tr>
                         );
@@ -2369,12 +2419,23 @@ export default function App() {
                   const ident = af && bf && +a.h === +b.h && +a.a === +b.a;
                   const sw = af && bf && outc(a) === outc(b);
                   const verdict = (!af || !bf) ? { t: "sin pronóstico", c: "var(--silver)" } : ident ? { t: "🎯 idéntico", c: "var(--gold-l)" } : sw ? { t: "≈ mismo ganador", c: "var(--emerald)" } : { t: "✗ distinto", c: "var(--rose)" };
+                  const r = resOfM(m); const hasR = r && r.h != null && r.a != null;
+                  const radv = hasR && m.ko ? realAdvancer(r, m.home, m.away) : null;
+                  const pa = ptsFor(person, m), pb = ptsFor(opp, m);
                   return (
-                    <div key={m.id} className="cmp-row">
-                      <div className="cmp-team"><span className="mf">{FL[m.home] || "🏳️"}</span><span className="mn">{m.home}</span></div>
-                      <div className="cmp-scores"><span>{af ? `${a.h}-${a.a}` : "—"}</span><span className="cmp-p-sep">·</span><span>{bf ? `${b.h}-${b.a}` : "—"}</span></div>
-                      <div className="cmp-team away"><span className="mf">{FL[m.away] || "🏳️"}</span><span className="mn">{m.away}</span></div>
-                      <div className="cmp-verdict" style={{ color: verdict.c }}>{verdict.t}</div>
+                    <div key={m.id} className="cmp-row-wrap">
+                      <div className="cmp-row">
+                        <div className="cmp-team"><span className="mf">{FL[m.home] || "🏳️"}</span><span className="mn">{m.home}</span></div>
+                        <div className="cmp-scores"><span>{af ? `${a.h}-${a.a}` : "—"}</span><span className="cmp-p-sep">·</span><span>{bf ? `${b.h}-${b.a}` : "—"}</span></div>
+                        <div className="cmp-team away"><span className="mf">{FL[m.away] || "🏳️"}</span><span className="mn">{m.away}</span></div>
+                        <div className="cmp-verdict" style={{ color: verdict.c }}>{verdict.t}</div>
+                      </div>
+                      {hasR && (
+                        <div className="cmp-real-line">
+                          <span>✅ Real: <b style={{ color: "var(--white)" }}>{r.h}-{r.a}</b>{radv && +r.h === +r.a ? <> · pen {FL[radv]} {radv}</> : ""}</span>
+                          <span>{displayName(person)} <b style={{ color: pa > 0 ? "var(--emerald)" : "var(--silver)" }}>+{pa ?? 0}</b> · {displayName(opp)} <b style={{ color: pb > 0 ? "var(--emerald)" : "var(--silver)" }}>+{pb ?? 0}</b></span>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -2698,7 +2759,7 @@ export default function App() {
           const hideKO = isAI(person) && !adminMode;
           const koResults = data.koResults || {};
           const myPreds = person ? (data.koPreds?.[person] || {}) : {};
-          const { rounds: roundsData, thirdPlace: tp, champion } = buildKO(data.results || {}, koResults);
+          const { rounds: roundsData, thirdPlace: tp, champion } = buildKO(data.results || {}, koResults, data.koThirds || {});
           const anyResolved = roundsData[0].matches.some(m => m.a || m.b); // ya hay al menos un grupo cerrado
           const groupsDone = allGroupsDone(data.results || {});
           const pend  = pendingGroups(data.results || {});   // grupos que faltan terminar
@@ -2721,7 +2782,7 @@ export default function App() {
           const roundMatches = (rid) => {
             const R = roundsData.find(x => x.id === rid);
             if (!R) return [];
-            const list = R.matches.map(m => ({ slot: m.slot, a: m.a, b: m.b }));
+            const list = orderedMatches(R).map(m => ({ slot: m.slot, a: m.a, b: m.b }));
             if (rid === "F" && (tp.a || tp.b)) list.push({ slot: "TP-0", a: tp.a, b: tp.b, isTP: true });
             return list;
           };
@@ -2805,11 +2866,102 @@ export default function App() {
                   })}
                 </div>
 
-                {/* Cruces de la ronda seleccionada */}
+                {/* Cruces de la ronda seleccionada — misma tabla rica que Predicciones + penales */}
                 {(() => {
                   const def = ROUND_DEFS.find(r => r.id === koRound);
                   const ms = roundMatches(koRound);
                   const pp = pendingToPredict(koRound);
+                  const roundPts = ms.reduce((s, m) => s + ((m.a && m.b) ? (koSlotPts(myPreds[m.slot], koResults[m.slot], m.a, m.b) ?? 0) : 0), 0);
+
+                  const renderKoRow = (m) => {
+                    const s = slotState(m.slot, m.a, m.b);
+                    if (s.pending) {
+                      return (
+                        <div key={m.slot} className="match-row" style={{ opacity: 0.65 }}>
+                          <div><div style={{ fontSize: 12, color: "var(--silver)" }}>{m.isTP ? "🥉 " : ""}{fmtDate(s.date)}</div></div>
+                          <div style={{ gridColumn: "2 / 6", fontSize: 12.5, color: "var(--silver)" }}>⏳ Se define cuando terminen <b>{PREV_LABEL[koRound] || "la ronda anterior"}</b>.</div>
+                        </div>
+                      );
+                    }
+                    const pred = myPreds[m.slot] || { h: "", a: "" };
+                    const hasPred = isFilled(pred);
+                    const res = s.res;
+                    const radv = res ? realAdvancer(res, m.a, m.b) : null;
+                    const padv = predAdvancer(pred, m.a, m.b);
+                    const predDraw = hasPred && +pred.h === +pred.a;
+                    const pts = s.decided ? koSlotPts(pred, res, m.a, m.b) : null;
+                    const editable = canEdit && s.teamsKnown && (s.open || adminMode); // admin puede corregir aunque esté bloqueado
+                    const hideIA = isAI(person) && !adminMode;
+                    const ptsColor = pts == null ? null : pts >= KO_EXACT ? "var(--gold)" : pts >= 2 ? "var(--emerald)" : "var(--rose)";
+                    const rowCls = `match-row${s.locked && !adminMode ? " locked" : ""}${pts == null ? "" : pts >= KO_EXACT ? " pts3-row" : pts >= 2 ? " pts1-row" : " pts0-row"}`;
+                    return (
+                      <div key={m.slot} className="ko-row-wrap">
+                        <div className={rowCls}>
+                          <div>
+                            <div style={{ fontSize: 12, color: s.locked ? "var(--gold)" : "var(--silver)", fontWeight: 500 }}>{m.isTP ? "🥉 " : ""}{fmtDate(s.date)}</div>
+                            {s.locked && <div style={{ fontSize: 9, color: "var(--silver)", marginTop: 1, letterSpacing: 0.5 }}>🔒 CERRADO</div>}
+                            <button className="h2h-btn" title="Historial entre estos equipos" onClick={() => setH2h({ home: m.a, away: m.b })}>ℹ️</button>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <div className={`flag-bubble${radv === m.a ? " win" : ""}`}>{FL[m.a] || "🏳️"}</div>
+                            <div style={{ minWidth: 0 }}>
+                              <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 600, letterSpacing: 0.3 }}>{m.a}</span>
+                              {renderForm(m.a, false)}
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                            {hideIA ? (
+                              <span style={{ fontSize: 12, color: "var(--silver)" }}>🔒 oculto</span>
+                            ) : editable ? (<>
+                              <input type="number" min="0" max="30" className="score-inp" value={pred.h ?? ""} onChange={e => setKoPred(m.slot, "h", e.target.value)}
+                                style={{ borderColor: ptsColor || "rgba(148,163,184,0.2)" }} />
+                              <span style={{ color: "var(--silver)", fontFamily: "'Oswald',sans-serif", fontSize: 16 }}>—</span>
+                              <input type="number" min="0" max="30" className="score-inp" value={pred.a ?? ""} onChange={e => setKoPred(m.slot, "a", e.target.value)}
+                                style={{ borderColor: ptsColor || "rgba(148,163,184,0.2)" }} />
+                            </>) : (
+                              <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 16, fontWeight: 600, color: "var(--silver-l)" }}>{hasPred ? `${pred.h}-${pred.a}` : "– –"}</span>
+                            )}
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10 }}>
+                            <div style={{ minWidth: 0, textAlign: "right" }}>
+                              <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 600, letterSpacing: 0.3 }}>{m.b}</span>
+                              {renderForm(m.b, true)}
+                            </div>
+                            <div className={`flag-bubble${radv === m.b ? " win" : ""}`}>{FL[m.b] || "🏳️"}</div>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
+                            {res ? (<>
+                              <span className="res-score">{res.h}–{res.a}</span>
+                              {radv && +res.h === +res.a && <span style={{ fontSize: 9.5, color: "var(--gold-l)" }}>pen {FL[radv]}</span>}
+                              {person && <button className="res-mini-btn" title="Editar el resultado oficial" onClick={() => setKoResEdit({ slot: m.slot, home: m.a, away: m.b, h: res.h, a: res.a, adv: res.adv || "" })}>✏️</button>}
+                            </>) : person ? (
+                              <button className="res-mini-btn load" title="Cargar el resultado oficial (lo verán todos)" onClick={() => setKoResEdit({ slot: m.slot, home: m.a, away: m.b, h: "", a: "", adv: "" })}>📝</button>
+                            ) : <span style={{ color: "var(--silver)", fontSize: 12 }}>– –</span>}
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "center" }}>
+                            {pts != null && (
+                              <span className="badge-pop" style={{ padding: "4px 9px", borderRadius: 20, fontSize: 12, fontWeight: 700, fontFamily: "'Oswald',sans-serif",
+                                background: pts >= KO_EXACT ? "rgba(245,158,11,0.2)" : pts >= 2 ? "rgba(16,185,129,0.2)" : "rgba(244,63,94,0.18)",
+                                border: `1px solid ${ptsColor}`, color: pts >= KO_EXACT ? "var(--gold-l)" : pts >= 2 ? "var(--emerald)" : "var(--rose)" }}>
+                                {pts > 0 ? `+${pts}` : "0"}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {editable && predDraw && !hideIA && (
+                          <div className="ko-pen">
+                            <span>🥅 Empate → ¿quién pasa por penales?</span>
+                            <button className={`ko-pen-btn${padv === m.a ? " active" : ""}`} onClick={() => setKoAdv(m.slot, m.a)}>{FL[m.a]} {m.a}</button>
+                            <button className={`ko-pen-btn${padv === m.b ? " active" : ""}`} onClick={() => setKoAdv(m.slot, m.b)}>{FL[m.b]} {m.b}</button>
+                          </div>
+                        )}
+                        {!editable && hasPred && predDraw && padv && !hideIA && (
+                          <div className="ko-pen" style={{ color: "var(--silver)" }}>tu penal: <b style={{ color: "var(--gold-l)" }}>{FL[padv]} {padv}</b></div>
+                        )}
+                      </div>
+                    );
+                  };
+
                   return (
                     <div style={{ marginBottom: 22 }}>
                       <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
@@ -2819,75 +2971,56 @@ export default function App() {
                           : ms.some(m => slotState(m.slot, m.a, m.b).open) ? <span style={{ fontSize: 12.5, color: "var(--emerald)" }}>✓ todo predicho</span> : null)}
                       </div>
                       {ms.length === 0 ? (
-                        <div className="ko-card pending">⏳ Aún no hay cruces en esta ronda.</div>
-                      ) : ms.map(m => {
-                        const s = slotState(m.slot, m.a, m.b);
-                        const pred = myPreds[m.slot] || {};
-                        const hasPred = isFilled(pred);
-                        const radv = s.res ? realAdvancer(s.res, m.a, m.b) : null;
-                        const padv = predAdvancer(pred, m.a, m.b);
-                        const predDraw = hasPred && +pred.h === +pred.a;
-                        const pts = s.decided ? koSlotPts(pred, s.res, m.a, m.b) : null;
-                        const stateCls = s.pending ? "pending" : s.open ? "open" : "locked";
-                        const chip = s.pending ? { t: "Pendiente", c: "var(--silver)" }
-                          : s.decided ? { t: "Jugado", c: "var(--emerald)" }
-                          : s.open ? { t: "Abierto", c: "var(--blue-xl)" }
-                          : { t: "Cerrado", c: "var(--rose)" };
-                        return (
-                          <div key={m.slot} className={`ko-card ${stateCls}`}>
-                            <div className="ko-top">
-                              <span className="ko-date">{m.isTP ? "🥉 3er puesto · " : ""}{fmtDate(s.date)}</span>
-                              <span className="ko-chip" style={{ color: chip.c, borderColor: chip.c }}>{chip.t}</span>
-                            </div>
-                            {s.pending ? (
-                              <div className="ko-pending-msg">⏳ Se define cuando terminen <b>{PREV_LABEL[koRound] || "la ronda anterior"}</b>.</div>
-                            ) : (<>
-                              <div className="ko-grid">
-                                <div className={`ko-side${radv === m.a ? " adv" : radv ? " out" : ""}`}>
-                                  <span className="ko-flag">{FL[m.a] || "🏳️"}</span><span className="ko-name">{m.a}</span>
-                                </div>
-                                <div className="ko-mid">
-                                  {s.open && canEdit ? (
-                                    <>
-                                      <input type="number" min="0" max="30" className="score-inp ko-score" value={pred.h ?? ""} onChange={e => setKoPred(m.slot, "h", e.target.value)} />
-                                      <span className="ko-dash">-</span>
-                                      <input type="number" min="0" max="30" className="score-inp ko-score" value={pred.a ?? ""} onChange={e => setKoPred(m.slot, "a", e.target.value)} />
-                                    </>
-                                  ) : (
-                                    <span className="ko-pred-sc">{hasPred ? `${pred.h}-${pred.a}` : "—"}</span>
-                                  )}
-                                </div>
-                                <div className={`ko-side right${radv === m.b ? " adv" : radv ? " out" : ""}`}>
-                                  <span className="ko-name">{m.b}</span><span className="ko-flag">{FL[m.b] || "🏳️"}</span>
-                                </div>
-                              </div>
-                              {s.open && canEdit && predDraw && (
-                                <div className="ko-pen">
-                                  <span>Empate → ¿quién pasa por penales?</span>
-                                  <button className={`ko-pen-btn${padv === m.a ? " active" : ""}`} onClick={() => setKoAdv(m.slot, m.a)}>{FL[m.a]} {m.a}</button>
-                                  <button className={`ko-pen-btn${padv === m.b ? " active" : ""}`} onClick={() => setKoAdv(m.slot, m.b)}>{FL[m.b]} {m.b}</button>
-                                </div>
-                              )}
-                              {!s.open && hasPred && !s.decided && (
-                                <div className="ko-yourpred">Tu pronóstico: <b>{pred.h}-{pred.a}</b>{predDraw && padv ? ` · pasa ${padv}` : ""}</div>
-                              )}
-                              {s.decided && (
-                                <div className="ko-real">
-                                  <span>Resultado: <b style={{ color: "var(--white)" }}>{s.res.h}-{s.res.a}</b>{radv ? <> · avanza <b style={{ color: "var(--gold-l)" }}>{FL[radv]} {radv}</b></> : ""}</span>
-                                  {hasPred && pts != null && (
-                                    <span className={`ko-pts${pts > 0 ? " good" : ""}`}>tu pronóstico {pred.h}-{pred.a} · +{pts}</span>
-                                  )}
-                                </div>
-                              )}
-                              {adminMode && s.teamsKnown && (
-                                <button className="ko-admin-btn" onClick={() => setKoResEdit({ slot: m.slot, home: m.a, away: m.b, h: s.res?.h ?? "", a: s.res?.a ?? "", adv: s.res?.adv || "" })}>
-                                  📝 {s.res ? "Editar" : "Cargar"} resultado
-                                </button>
-                              )}
-                            </>)}
+                        <div className="glass-sm" style={{ borderRadius: 10, padding: "16px", textAlign: "center", color: "var(--silver)", fontSize: 13 }}>⏳ Aún no hay cruces en esta ronda.</div>
+                      ) : (
+                        <div className="glass" style={{ borderRadius: 14, overflow: "hidden" }}>
+                          <div className="match-col-headers" style={{ display: "grid", gridTemplateColumns: "56px 1fr 130px 1fr 96px 52px", gap: 8, padding: "8px 18px", borderBottom: "1px solid rgba(148,163,184,0.08)", fontSize: 10, color: "var(--silver)", letterSpacing: 1.5, fontWeight: 600 }}>
+                            <div>FECHA</div><div>EQUIPO</div><div style={{ textAlign: "center" }}>{person ? `PRED. ${displayName(person).split(" ")[0].toUpperCase()}` : "PREDICCIÓN"}</div><div style={{ textAlign: "right" }}>EQUIPO</div><div style={{ textAlign: "center" }}>RESULTADO</div><div style={{ textAlign: "center" }}>PTS</div>
                           </div>
-                        );
-                      })}
+                          {ms.map(renderKoRow)}
+                          {person && !isAI(person) && (
+                            <div style={{ padding: "12px 20px", background: "rgba(37,99,235,0.07)", borderTop: "1px solid rgba(148,163,184,0.08)", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                              <span style={{ fontSize: 12, color: "var(--silver)", letterSpacing: 1 }}>SUBTOTAL {def?.label?.toUpperCase()}</span>
+                              <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: 22, fontWeight: 700, color: "var(--gold-l)" }}>{roundPts} pts</span>
+                              <span style={{ fontSize: 12, color: "var(--silver)" }}>·</span>
+                              <span style={{ fontSize: 12, color: "var(--emerald)", fontWeight: 500 }}>total eliminación: {koTotalFor(person, data)} pts</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Admin: corregir asignación de terceros (item 4) */}
+                {adminMode && groupsDone && (() => {
+                  const thirds = bestThirds(data.results || {});
+                  const slotsIdx = [1, 4, 6, 7, 8, 9, 12, 14];
+                  const assigned = slotsIdx.map(i => roundsData[0].matches[i]?.b).filter(Boolean);
+                  const dups = [...new Set(assigned.filter((t, i) => assigned.indexOf(t) !== i))];
+                  const selStyle = { width: "100%", padding: "7px 9px", background: "rgba(6,14,38,0.7)", border: "1.5px solid rgba(148,163,184,0.25)", borderRadius: 8, color: "var(--white)", fontSize: 12.5, fontFamily: "'DM Sans',sans-serif", outline: "none" };
+                  return (
+                    <div className="glass" style={{ borderRadius: 14, padding: 16, marginBottom: 18, border: "1px solid rgba(245,158,11,0.3)" }}>
+                      <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 15, fontWeight: 600, letterSpacing: 1.5, color: "var(--gold)", marginBottom: 6 }}>🔧 AJUSTAR TERCEROS (ADMIN)</div>
+                      <div style={{ fontSize: 12, color: "var(--silver)", marginBottom: 12, lineHeight: 1.5 }}>Si algún cruce con un 3er lugar no calza con la llave oficial, corrígelo aquí. La asignación automática respeta los grupos permitidos por FIFA, pero para tu combinación puede haber más de una opción válida.</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 12 }}>
+                        {slotsIdx.map(i => {
+                          const m = roundsData[0].matches[i];
+                          const slot = `R32-${i}`;
+                          const cur = data.koThirds?.[slot] || "";
+                          return (
+                            <div key={slot} style={{ fontSize: 12 }}>
+                              <div style={{ color: "var(--silver-l)", marginBottom: 5 }}>{FL[m.a] || "🏳️"} <b>{m.a}</b> <span style={{ color: "var(--silver)" }}>vs 3er lugar</span></div>
+                              <select value={cur} onChange={e => setKoThird(slot, e.target.value)} style={selStyle}>
+                                <option value="">(auto: {m.b || "—"})</option>
+                                {thirds.map(t => <option key={t.t} value={t.t}>{t.t} · 3°{t.g}</option>)}
+                              </select>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {dups.length > 0 && <div style={{ color: "var(--rose)", fontSize: 12, marginTop: 10 }}>⚠️ Terceros repetidos en la llave: {dups.join(", ")}. Ajusta para que cada uno aparezca una sola vez.</div>}
+                      {Object.keys(data.koThirds || {}).length > 0 && <button className="btn btn-ghost" style={{ marginTop: 12 }} onClick={() => writeField(["koThirds"], {})}>↺ Volver a automático</button>}
                     </div>
                   );
                 })()}
@@ -2909,7 +3042,7 @@ export default function App() {
                       <div key={R.id} className="bk-round">
                         <div className="bk-round-head">{R.label}</div>
                         <div className="bk-col">
-                          {R.matches.map((m) => {
+                          {orderedMatches(R).map((m) => {
                             const renderTeam = (t, side) => {
                               if (!t) return <div key={`${R.id}-${m.idx}-${side}-empty`} className="bk-team empty"><span className="bk-flag">⬚</span><span className="bk-name">Por definir</span></div>;
                               const isWin = m.w === t;

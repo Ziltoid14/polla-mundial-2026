@@ -13,40 +13,52 @@ Eres un agente económico (Haiku). Tu trabajo es rápido y barato. Sigue estos p
    ```bash
    npm run agenda
    ```
-   Esto imprime un JSON con `today`, `todayMatches` y `pendingResults`.
+   Esto imprime un JSON con `today`, `todayMatches`, `pendingResults` y `koNeedIA`.
+   Cada partido trae `ko` (true = cruce de eliminación, su id es un slot como `R32-3`; false = partido de grupo).
 
-3. **Si `todayMatches` y `pendingResults` están ambos vacíos → TERMINA AQUÍ.** No hagas nada más (día sin actividad, costo casi cero).
+3. **Si `todayMatches` y `pendingResults` están vacíos y `koNeedIA` es false → TERMINA AQUÍ.** No hagas nada más (día sin actividad, costo casi cero).
 
-4. **Resultados pendientes** (`pendingResults`): para cada partido, busca en la web el marcador final oficial del Mundial 2026. Solo si encuentras un resultado confiable, agrégalo. Formato: `results[ID] = { "h": golesLocal, "a": golesVisitante }` (el 1er equipo es local `h`, el 2do visitante `a`). Si no hay marcador confiable, omítelo.
+3.5. **Predicciones de eliminación de las IA** — si `koNeedIA` es true, corre el script determinista (rellena al 🔮 Oráculo SOLO por fuerza y al 🧠 Analista con la forma reciente, sin que tú tengas que razonar nada):
+   ```bash
+   node scripts/ko-ia.mjs
+   ```
 
-5. **Predicciones del 🧠 Analista** (`todayMatches` con `analystDone:false`): para cada partido de HOY, predice un marcador razonable analizando la forma reciente y resultados previos del torneo. Sé conciso. Formato: `predictions["🧠 Analista"][ID] = { "h": n, "a": n }`.
+4. **Resultados pendientes** (`pendingResults`): para cada partido, busca en la web el marcador final oficial del Mundial 2026. Solo si encuentras un resultado confiable, agrégalo.
+   - **Grupo** (`ko:false`): `results[ID] = { "h": golesLocal, "a": golesVisitante }` (1er equipo local `h`, 2do visitante `a`).
+   - **Eliminación** (`ko:true`): `koResults[ID] = { "h": ..., "a": ..., "adv": "<equipo que avanzó>" }`. `adv` SIEMPRE va: si hubo empate en los 90' lo decide el penal; si no, es el que ganó. Usa el nombre EXACTO del equipo (home o away del cruce).
+   - Si no hay marcador confiable, omítelo.
 
-6. **Actualización histórica (forma + H2H entre ellos)** de los partidos que SÍ se jugaron (los de `pendingResults` que pudiste completar). Para cada partido jugado con resultado `home X - away Y`:
-   - **Forma**: agrega el partido al final del array `form[home]` y `form[away]` (manteniendo solo los últimos 5). Cada entrada nueva es un objeto:
-     `{ "r":"W|D|L", "date":"YYYY-MM-DD", "opp":"Rival", "score":"goles propios-goles rival", "comp":"Mundial" }`.
-     Para esto necesitas el array actual: léelo con `node scripts/print-team-form.mjs "<Equipo>"` (imprime el array actual), agrega el nuevo y manda los 5 finales (el array se reemplaza completo).
-   - **H2H entre ellos**: agrega este partido al inicio del array `h2h[clave]` (clave = los dos equipos ordenados alfabéticamente unidos por " vs ", igual que en la app), manteniendo los últimos 3: `{ "date":"YYYY-MM-DD", "comp":"Mundial", "score":"X-Y" }`.
+5. **Predicciones de grupo del 🧠 Analista** (`todayMatches` con `ko:false` y `analystDone:false`): predice un marcador razonable analizando la forma reciente. Formato: `predictions["🧠 Analista"][ID] = { "h": n, "a": n }`. (Las de eliminación las hace `ko-ia.mjs` en el paso 3.5, no a mano.)
+
+6. **Forma (últimos 5)** — NO la escribas a mano. Después de cargar resultados (paso 8), corre el script determinista (gratis, sin web):
+   ```bash
+   node scripts/rebuild-form.mjs
+   ```
+   Recalcula `form[*]` desde los resultados ya cargados (grupos + eliminación). No incluyas `form` en el parche del paso 7.
+   (Opcional **H2H entre ellos**: si quieres, agrega el partido jugado al inicio de `h2h[clave]` —clave = los dos equipos ordenados alfabéticamente unidos por " vs "—, últimos 3: `{ "date","comp":"Mundial","score":"X-Y" }`. No es crítico.)
 
 7. Construye UN solo parche JSON con TODO lo anterior y escríbelo a `/tmp/patch.json`:
    ```json
    {
      "results": { "A01": { "h": 2, "a": 1 } },
-     "predictions": { "🧠 Analista": { "A02": { "h": 1, "a": 1 } } },
-     "form": {
-       "México": [ { "r":"W","date":"2026-06-11","opp":"Sudáfrica","score":"2-1","comp":"Mundial" } ]
-     },
-     "h2h": {
-       "México vs Sudáfrica": [ { "date":"2026-06-11","comp":"Mundial","score":"2-1" } ]
-     }
+     "koResults": { "R32-0": { "h": 1, "a": 1, "adv": "Canadá" } },
+     "predictions": { "🧠 Analista": { "A02": { "h": 1, "a": 1 } } }
    }
    ```
+   (`koResults` solo si hubo cruces de eliminación jugados. NO incluyas `form` (la hace `rebuild-form.mjs`) ni las predicciones KO de las IA (las hace `ko-ia.mjs`).)
 
 8. Súbelo a Firebase:
    ```bash
    node scripts/sync.mjs /tmp/patch.json
    ```
 
-9. Reporta en una línea: resultados, predicciones del Analista, y formas/H2H actualizados. Listo.
+9. Recalcula la forma (gratis) y, si hay cruces nuevos definidos, las predicciones KO de las IA:
+   ```bash
+   node scripts/rebuild-form.mjs
+   node scripts/ko-ia.mjs
+   ```
+
+10. Reporta en una línea: resultados, predicciones del Analista, forma e IA. Listo.
 
 ## Reglas de eficiencia
 - Máximo 1 búsqueda web por partido pendiente. No investigues de más.
