@@ -216,28 +216,25 @@ export const buildKO = (results, koResults, thirdOverride) => {
    marcador exacto de los 90': +5 → máximo 8 por cruce.
    BONO EMPATE: clavar el marcador exacto de un empate Y acertar quién pasa por
    penales suma +2 extra → 10 puntos (premia el riesgo de apostar al empate). */
-export const KO_ADV = 3;
-export const KO_PARTIAL = 2;
-export const KO_EXACT = 5;
-export const KO_DRAW_BONUS = 2;
-export const KO_MAX = KO_ADV + KO_EXACT;            // 8 (cruce decisivo)
-export const KO_MAX_DRAW = KO_MAX + KO_DRAW_BONUS;  // 10 (empate exacto + penal acertado)
+export const KO_RESULT = 3;     // acertar el RESULTADO (1X2) a los 90'
+export const KO_PARTIAL = 2;    // diferencia de goles O goles de un equipo
+export const KO_EXACT = 5;      // marcador exacto a los 90'
+export const KO_DRAW_BONUS = 2; // empate acertado + quién clasifica (post-90': alargue/penales)
+export const KO_MAX = KO_RESULT + KO_EXACT;          // 8 (cruce decisivo)
+export const KO_MAX_DRAW = KO_MAX + KO_DRAW_BONUS;   // 10 (empate exacto + clasificado acertado)
 
 export const koSlotPts = (pred, res, a, b) => {
   if (!validScore(res) || !validScore(pred)) return null;
   const ph = +pred.h, pa = +pred.a, rh = +res.h, ra = +res.a;
   let pts = 0;
-  const radv = realAdvancer(res, a, b), padv = predAdvancer(pred, a, b);
-  const predDraw = ph === pa, realDraw = rh === ra;
-  // El "+avanza" no cuenta si apostaste un empate pero el partido fue decisivo:
-  // el ganador elegido por penales no vale cuando no hubo penales (solo sumarías los goles).
-  const advHit = !!(radv && padv && radv === padv && (!predDraw || realDraw));
-  if (advHit) pts += KO_ADV;
-  if (ph === rh && pa === ra) {                                            // marcador exacto
-    pts += KO_EXACT;
-    if (realDraw && advHit) pts += KO_DRAW_BONUS;                          // empate exacto + penal acertado = 10
-  } else if (ph === rh || pa === ra || (ph - pa) === (rh - ra)) {
-    pts += KO_PARTIAL;                                                     // diferencia o goles de un equipo
+  const predOut = Math.sign(ph - pa), realOut = Math.sign(rh - ra);
+  if (predOut === realOut) pts += KO_RESULT;                                // acierto del 1X2 a los 90'
+  if (ph === rh && pa === ra) pts += KO_EXACT;                              // marcador exacto a los 90'
+  else if (ph === rh || pa === ra || (ph - pa) === (rh - ra)) pts += KO_PARTIAL;
+  // Solo si apuestas empate Y fue empate a los 90': acertar quién clasifica post-90' suma +2.
+  if (predOut === 0 && realOut === 0) {
+    const radv = realAdvancer(res, a, b), padv = predAdvancer(pred, a, b);
+    if (radv && padv && radv === padv) pts += KO_DRAW_BONUS;
   }
   return pts;
 };

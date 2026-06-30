@@ -5,7 +5,7 @@ import { GD, FL, MATCHES, GK } from "./tournament";
 import {
   getStandings, buildKO, bestThirds, allGroupsDone, pendingGroups, KO_DATES, KO_DISPLAY, orderedMatches,
   koSlotPts, koTotalFor, predAdvancer, realAdvancer,
-  KO_ADV, KO_PARTIAL, KO_EXACT, KO_MAX, KO_DRAW_BONUS, KO_MAX_DRAW,
+  KO_RESULT, KO_PARTIAL, KO_EXACT, KO_MAX, KO_DRAW_BONUS, KO_MAX_DRAW,
 } from "./knockout";
 
 const ADMIN_PWD = "mundial2026";
@@ -34,6 +34,12 @@ const AVATAR_ICONS = [
 /* La más reciente arriba. Al cambiar la primera versión, el pop-up de novedades
    vuelve a aparecer una vez para todos. Se muestran las 2 últimas. */
 const CHANGELOG = [
+  { v: "2.0", date: "30 jun", items: [
+    "🎯 Cambió el puntaje de eliminación: los +3 ahora son por acertar el RESULTADO a los 90' (quién gana, o empate), NO por 'quién avanza'. Diferencia o goles de un equipo +2, marcador exacto a los 90' +5 (máx 8 por cruce).",
+    "🥅 Si predices empate y a los 90' fue empate, acertar quién clasifica (alargue/penales) suma +2: empate exacto + clasificado = 10; empate acertado sin marcador exacto + clasificado = 7. Los goles tras los 90' no cambian el puntaje, solo definen quién avanza.",
+    "🗝️ La app abre directo en la pestaña Eliminación.",
+    "🛠️ Ahora se puede corregir o borrar un resultado cargado por error (botón 🗑 en el cargador de resultados).",
+  ]},
   { v: "1.9", date: "28 jun", items: [
     "🗝️ La fase de Eliminación ahora funciona igual que las predicciones de grupo: ves la forma reciente (últimos 5), el historial entre equipos, el resultado real y tus puntos — con elección de quién pasa por penales si hay empate.",
     "📅 Los partidos de eliminación aparecen en 'Hoy' (cada uno en su día) y en 'Comparar', donde además se ven los puntos que ganó cada uno y el resultado real de cada cruce.",
@@ -1092,7 +1098,7 @@ const setIn = (obj, path, val) => {
 export default function App() {
   const [data,   setData]   = useState(EMPTY);
   const [loaded, setLoaded] = useState(false);
-  const [tab,    setTab]    = useState("predicciones");
+  const [tab,    setTab]    = useState("bracket"); // arranca en Eliminación
   const [grp,    setGrp]    = useState("A");
   const [grpKey, setGrpKey] = useState(0);
   const [bkZoom, setBkZoom] = useState(1);
@@ -1380,6 +1386,11 @@ export default function App() {
     ]);
     setResEdit(null);
   };
+  // Borrar el resultado de un partido de grupo (queda vacío, en caso de error)
+  const clearResult = (matchId) => {
+    writeFields([[["results", matchId], null], [["resultsBy", matchId], null]]);
+    setResEdit(null);
+  };
 
   const setExtra = (catId, val) => {
     if (!person) return;
@@ -1409,6 +1420,11 @@ export default function App() {
       [["koResults", slot], { h: H, a: A, adv }],
       [["koResultsBy", slot], { by: person || "admin", at: new Date().toISOString() }],
     ]);
+    setKoResEdit(null);
+  };
+  // Borrar el resultado de un cruce de eliminación (queda vacío)
+  const clearKoResult = (slot) => {
+    writeFields([[["koResults", slot], null], [["koResultsBy", slot], null]]);
     setKoResEdit(null);
   };
   // Admin: corrige a mano qué tercero va a un cruce de 16avos (override de la asignación automática)
@@ -1639,8 +1655,8 @@ export default function App() {
               </div>
               <div style={{ marginTop: 14, padding: "12px 14px", borderRadius: 12, background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)", fontSize: 12.5, color: "var(--silver-l)", lineHeight: 1.7 }}>
                 <b style={{ color: "var(--blue-xl)" }}>🗝️ Fase de eliminación</b> (igual en todas las rondas):<br />
-                Acertar quién avanza <b style={{ color: "var(--gold-l)" }}>+{KO_ADV}</b> · diferencia de goles o goles de un equipo <b style={{ color: "var(--gold-l)" }}>+{KO_PARTIAL}</b> · marcador exacto de los 90' <b style={{ color: "var(--gold-l)" }}>+{KO_EXACT}</b> → máximo <b style={{ color: "var(--gold-l)" }}>{KO_MAX}</b> por cruce.<br />
-                Si predices empate, eliges quién pasa por penales (cuenta para el "+{KO_ADV} quién avanza"). 🔥 <b style={{ color: "var(--gold-l)" }}>Clavar un empate exacto y acertar los penales suma {KO_MAX_DRAW}</b> (bono de +{KO_DRAW_BONUS} por el riesgo).
+                Acertar el resultado (ganador/empate) a los 90' <b style={{ color: "var(--gold-l)" }}>+{KO_RESULT}</b> · diferencia de goles o goles de un equipo <b style={{ color: "var(--gold-l)" }}>+{KO_PARTIAL}</b> · marcador exacto a los 90' <b style={{ color: "var(--gold-l)" }}>+{KO_EXACT}</b> → máximo <b style={{ color: "var(--gold-l)" }}>{KO_MAX}</b> por cruce.<br />
+                Si predices <b>empate</b> y a los 90' fue empate, acertar quién clasifica (alargue/penales) suma <b style={{ color: "var(--gold-l)" }}>+{KO_DRAW_BONUS}</b>. 🔥 <b style={{ color: "var(--gold-l)" }}>Empate exacto + clasificado = {KO_MAX_DRAW}</b>; empate acertado sin marcador exacto + clasificado = 7. Los goles tras los 90' no cambian el puntaje, solo definen quién avanza.
               </div>
               <div style={{ marginTop: 12, fontSize: 11.5, color: "var(--silver)" }}>
                 <b>Premios:</b> Campeón 40 · Subcampeón 25 · 3er puesto 15 · Goleador 35 · MVP 15 · Guante de Oro 15.
@@ -1667,6 +1683,9 @@ export default function App() {
               <button className="btn btn-primary" style={{ flex: 1, padding: "11px 0" }} disabled={resEdit.h === "" || resEdit.a === ""} onClick={() => saveResult(resEdit.id, resEdit.h, resEdit.a)}>Guardar</button>
               <button className="btn btn-ghost" onClick={() => setResEdit(null)}>Cancelar</button>
             </div>
+            {data.results[resEdit.id]?.h != null && (
+              <button className="btn btn-ghost" style={{ width: "100%", marginTop: 8, color: "var(--rose)", borderColor: "rgba(244,63,94,0.35)" }} onClick={() => clearResult(resEdit.id)}>🗑 Borrar resultado (dejar vacío)</button>
+            )}
             <div style={{ fontSize: 11, color: "var(--silver)", textAlign: "center", marginTop: 12 }}>Se registrará como cargado por <b style={{ color: "var(--gold-l)" }}>{person ? displayName(person) : "—"}</b>.</div>
           </div>
         </div>
@@ -1679,7 +1698,7 @@ export default function App() {
           <div className="modal" onClick={e => e.target === e.currentTarget && setKoResEdit(null)}>
             <div className="glass" style={{ borderRadius: 16, padding: 24, width: 380, maxWidth: "92vw" }}>
               <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 19, fontWeight: 600, letterSpacing: 1 }}>🗝️ RESULTADO DE ELIMINACIÓN</div>
-              <div style={{ fontSize: 12.5, color: "var(--silver)", marginBottom: 18 }}>Marcador de los 90'. El ganador avanza en la llave y suma puntos a todos.</div>
+              <div style={{ fontSize: 12.5, color: "var(--silver)", marginBottom: 18 }}>Marcador <b style={{ color: "var(--silver-l)" }}>a los 90'</b> (lo que puntúa). Si terminó empatado, indica quién clasificó (alargue/penales) — eso no cambia los goles, solo define quién avanza.</div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 16 }}>
                 <div style={{ textAlign: "center", width: 78 }}><div style={{ fontSize: 30 }}>{FL[koResEdit.home] || "🏳️"}</div><div style={{ fontSize: 11.5, color: "var(--silver)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{koResEdit.home}</div></div>
                 <input type="number" min="0" max="30" className="score-inp" style={{ width: 50 }} value={koResEdit.h} autoFocus onChange={e => setKoResEdit(re => ({ ...re, h: e.target.value }))} />
@@ -1689,7 +1708,7 @@ export default function App() {
               </div>
               {tie && (
                 <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 12, color: "var(--gold-l)", textAlign: "center", marginBottom: 8 }}>Empate en los 90' → ¿quién avanzó por penales?</div>
+                  <div style={{ fontSize: 12, color: "var(--gold-l)", textAlign: "center", marginBottom: 8 }}>Empate a los 90' → ¿quién clasificó? (alargue o penales)</div>
                   <div style={{ display: "flex", gap: 8 }}>
                     {[koResEdit.home, koResEdit.away].map(t => (
                       <button key={t} className={`ko-pen-btn${koResEdit.adv === t ? " active" : ""}`} style={{ flex: 1, justifyContent: "center" }} onClick={() => setKoResEdit(re => ({ ...re, adv: t }))}>{FL[t]} {t}</button>
@@ -1701,6 +1720,9 @@ export default function App() {
                 <button className="btn btn-primary" style={{ flex: 1, padding: "11px 0" }} disabled={!canSave} onClick={() => saveKoResult(koResEdit.slot, koResEdit.h, koResEdit.a, koResEdit.adv, koResEdit.home, koResEdit.away)}>Guardar</button>
                 <button className="btn btn-ghost" onClick={() => setKoResEdit(null)}>Cancelar</button>
               </div>
+              {data.koResults?.[koResEdit.slot]?.h != null && (
+                <button className="btn btn-ghost" style={{ width: "100%", marginTop: 8, color: "var(--rose)", borderColor: "rgba(244,63,94,0.35)" }} onClick={() => clearKoResult(koResEdit.slot)}>🗑 Borrar resultado (dejar vacío)</button>
+              )}
             </div>
           </div>
         );
@@ -2807,7 +2829,7 @@ export default function App() {
                 <span style={{ fontSize: 13, color: "var(--gold-l)", fontWeight: 600 }}>¡suma puntos!</span>
               </div>
               <p style={{ fontSize: 12.5, color: "var(--silver)", marginBottom: 14, maxWidth: 640, lineHeight: 1.6 }}>
-                Predice el <strong style={{ color: "var(--white)" }}>marcador de cada cruce</strong>. Quién avanza <b style={{ color: "var(--gold-l)" }}>+{KO_ADV}</b> · diferencia o goles de un equipo <b style={{ color: "var(--gold-l)" }}>+{KO_PARTIAL}</b> · marcador exacto <b style={{ color: "var(--gold-l)" }}>+{KO_EXACT}</b> (máx {KO_MAX}). 🔥 <b style={{ color: "var(--gold-l)" }}>¡Empate exacto + acertar los penales = {KO_MAX_DRAW}!</b> La <b style={{ color: "var(--gold-l)" }}>línea dorada</b> marca quién avanzó de verdad. 🗝️
+                Predice el <strong style={{ color: "var(--white)" }}>marcador de cada cruce</strong>. Resultado a los 90' <b style={{ color: "var(--gold-l)" }}>+{KO_RESULT}</b> · diferencia o goles de un equipo <b style={{ color: "var(--gold-l)" }}>+{KO_PARTIAL}</b> · marcador exacto <b style={{ color: "var(--gold-l)" }}>+{KO_EXACT}</b> (máx {KO_MAX}). 🔥 <b style={{ color: "var(--gold-l)" }}>¡Empate + acertar quién clasifica = hasta {KO_MAX_DRAW}!</b> La <b style={{ color: "var(--gold-l)" }}>línea dorada</b> marca quién avanzó de verdad. 🗝️
               </p>
 
               {/* Selector de participante */}
@@ -2950,13 +2972,13 @@ export default function App() {
                         </div>
                         {editable && predDraw && !hideIA && (
                           <div className="ko-pen">
-                            <span>🥅 Empate → ¿quién pasa por penales?</span>
+                            <span>🥅 Empate → ¿quién clasifica? (alargue/penales)</span>
                             <button className={`ko-pen-btn${padv === m.a ? " active" : ""}`} onClick={() => setKoAdv(m.slot, m.a)}>{FL[m.a]} {m.a}</button>
                             <button className={`ko-pen-btn${padv === m.b ? " active" : ""}`} onClick={() => setKoAdv(m.slot, m.b)}>{FL[m.b]} {m.b}</button>
                           </div>
                         )}
                         {!editable && hasPred && predDraw && padv && !hideIA && (
-                          <div className="ko-pen" style={{ color: "var(--silver)" }}>tu penal: <b style={{ color: "var(--gold-l)" }}>{FL[padv]} {padv}</b></div>
+                          <div className="ko-pen" style={{ color: "var(--silver)" }}>tu clasificado: <b style={{ color: "var(--gold-l)" }}>{FL[padv]} {padv}</b></div>
                         )}
                       </div>
                     );
